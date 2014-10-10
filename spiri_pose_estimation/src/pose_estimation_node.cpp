@@ -48,13 +48,17 @@ SpiriPoseEstimationNode::SpiriPoseEstimationNode(const SystemPtr& system)
   pose_estimation_->addMeasurement(new PoseUpdate("poseupdate"));
   
   Height *range = new Height("range");
-  range->setStdDev(0.001);
+  range->setStdDev(0.0001);
   pose_estimation_->addMeasurement(range);
   
   
   Height *pressure = new Height("pressure");
-  pressure->setStdDev(0.00001);
+  pressure->setStdDev(1.0);
   pose_estimation_->addMeasurement(pressure);
+  
+  Height *gpsAltitude = new Height("gpsaltitude");
+  gpsAltitude->setStdDev(0.2);
+  pose_estimation_->addMeasurement(gpsAltitude);
   
   pose_estimation_->addMeasurement(new Magnetic("magnetic"));
   pose_estimation_->addMeasurement(new GPS("gps"));
@@ -142,26 +146,37 @@ void SpiriPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& ra
   catch (tf::TransformException ex){
       ROS_ERROR("%s",ex.what());
       ros::Duration(1.0).sleep();
-    }
-  
+  }
+
   Height::MeasurementVector update;
-  if (range->range < range->max_range - 0.01) {
+  if (range->range < range->max_range - 0.1) {
     update = range->range + tf.getOrigin().z();
+    pose_estimation_->getMeasurement("range")->add(Height::Update(update));
+
   }
   else {
-    update = tf.getOrigin().z();
+    // This is a dirty hack.
+    // Hopefully the range data on the real robot isn't so bad
+    // If the pose estimate never leaves the ground this could be to blame
+    geometry_msgs::PoseStamped pose_msg;
+    pose_estimation_->getPose(pose_msg);
+    if ( (pose_msg.pose.position.z + tf.getOrigin().z()) > range->max_range*0.5) {
+      // we're closer to the max range - the data is invalid
+    }
+    else {
+      // we're closer to the min range ie should report 0
+      update = tf.getOrigin().z();
+      pose_estimation_->getMeasurement("range")->add(Height::Update(update));
+    }
     //ROS_WARN("range is below minimum height\n");
   }
   
-  pose_estimation_->getMeasurement("range")->add(Height::Update(update));
 }
 
 void SpiriPoseEstimationNode::pressureCallback(const hector_uav_msgs::AltimeterConstPtr& altimeter) {
   Height::MeasurementVector update;
-  if (altimeter->altitude > 0.05) {
-    update = altimeter->altitude;
-    pose_estimation_->getMeasurement("pressure")->add(Height::Update(update));
- }
+  update = altimeter->altitude;
+  pose_estimation_->getMeasurement("pressure")->add(Height::Update(update));
 }
 
 
@@ -181,6 +196,10 @@ void SpiriPoseEstimationNode::gpsCallback(const sensor_msgs::NavSatFixConstPtr& 
   update.velocity_north =  gps_velocity->vector.x;
   update.velocity_east  = -gps_velocity->vector.y;
   pose_estimation_->getMeasurement("gps")->add(update);
+  
+  Height::Update heightupdate;
+  heightupdate = gps->altitude;
+  pose_estimation_->getMeasurement("gpsaltitude")->add(heightupdate);
 
   if (gps_pose_publisher_.getNumSubscribers() > 0) {
     geometry_msgs::PoseStamped gps_pose;
