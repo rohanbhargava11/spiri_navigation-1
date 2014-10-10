@@ -46,13 +46,15 @@ SpiriPoseEstimationNode::SpiriPoseEstimationNode(const SystemPtr& system)
   if (!system) pose_estimation_->addSystem(System::create(new GenericQuaternionSystemModel));
 
   pose_estimation_->addMeasurement(new PoseUpdate("poseupdate"));
-  pose_estimation_->addMeasurement(new Height("range"));
-  //double range_stddev = 0.0001; // TODO (Arnold): Get this from the parameter server
-  //pose_estimation_->getMeasurement("range")->parameters().add("stddev", range_stddev);
-
-  pose_estimation_->addMeasurement(new Height("pressure"));
-  //double pressure_stddev = 0.000001; // TODO (Arnold): Get this from the parameter server
-  //pose_estimation_->getMeasurement("pressure")->parameters().add("stddev", pressure_stddev);
+  
+  Height *range = new Height("range");
+  range->setStdDev(0.001);
+  pose_estimation_->addMeasurement(range);
+  
+  
+  Height *pressure = new Height("pressure");
+  pressure->setStdDev(0.00001);
+  pose_estimation_->addMeasurement(pressure);
   
   pose_estimation_->addMeasurement(new Magnetic("magnetic"));
   pose_estimation_->addMeasurement(new GPS("gps"));
@@ -132,15 +134,25 @@ void SpiriPoseEstimationNode::imuCallback(const sensor_msgs::ImuConstPtr& imu) {
 }
 
 void SpiriPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& range) {
-  // TODO (Arnold): Use a tf listener here, not the constant offset 0.05
+  tf::StampedTransform tf;
+  try {
+    this->getTransformListener()->lookupTransform("range_link", "base_link",  
+                           ros::Time(0), tf);
+  }
+  catch (tf::TransformException ex){
+      ROS_ERROR("%s",ex.what());
+      ros::Duration(1.0).sleep();
+    }
+  
   Height::MeasurementVector update;
   if (range->range < range->max_range - 0.01) {
-    update = range->range + 0.05;
+    update = range->range + tf.getOrigin().z();
   }
   else {
-    update = 0.05;
+    update = tf.getOrigin().z();
     //ROS_WARN("range is below minimum height\n");
   }
+  
   pose_estimation_->getMeasurement("range")->add(Height::Update(update));
 }
 
