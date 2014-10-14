@@ -44,13 +44,14 @@ SpiriPoseEstimationNode::SpiriPoseEstimationNode(const SystemPtr& system)
   , transform_listener_(0)
 {
   if (!system) pose_estimation_->addSystem(System::create(new GenericQuaternionSystemModel));
-
-  pose_estimation_->addMeasurement(new PoseUpdate("poseupdate"));
+  
+  Magnetic *magnetic = new Magnetic("magnetic");
+  magnetic->setStdDev(0.036);
+  pose_estimation_->addMeasurement(magnetic);
   
   Height *range = new Height("range");
   range->setStdDev(0.0001);
   pose_estimation_->addMeasurement(range);
-  
   
   Height *pressure = new Height("pressure");
   pressure->setStdDev(1.0);
@@ -60,8 +61,8 @@ SpiriPoseEstimationNode::SpiriPoseEstimationNode(const SystemPtr& system)
   gpsAltitude->setStdDev(0.2);
   pose_estimation_->addMeasurement(gpsAltitude);
   
-  pose_estimation_->addMeasurement(new Magnetic("magnetic"));
   pose_estimation_->addMeasurement(new GPS("gps"));
+  pose_estimation_->addMeasurement(new PoseUpdate("poseupdate"));
 }
 
 SpiriPoseEstimationNode::~SpiriPoseEstimationNode()
@@ -109,6 +110,7 @@ bool SpiriPoseEstimationNode::init() {
   linear_acceleration_bias_publisher_ = getNodeHandle().advertise<geometry_msgs::Vector3Stamped>("linear_acceleration_bias", 10, false);
   gps_pose_publisher_                 = getNodeHandle().advertise<geometry_msgs::PoseStamped>("fix/pose", 10, false);
 
+  odomupdate_subscriber_  = getNodeHandle().subscribe("odomupdate", 10, &SpiriPoseEstimationNode::odomupdateCallback, this);
   poseupdate_subscriber_  = getNodeHandle().subscribe("poseupdate", 10, &SpiriPoseEstimationNode::poseupdateCallback, this);
   twistupdate_subscriber_ = getNodeHandle().subscribe("twistupdate", 10, &SpiriPoseEstimationNode::twistupdateCallback, this);
   syscommand_subscriber_  = getNodeHandle().subscribe("syscommand", 10, &SpiriPoseEstimationNode::syscommandCallback, this);
@@ -215,6 +217,33 @@ void SpiriPoseEstimationNode::gpsCallback(const sensor_msgs::NavSatFixConstPtr& 
     gps_pose.pose.orientation.z = sin(track/2);
     gps_pose_publisher_.publish(gps_pose);
   }
+}
+
+void SpiriPoseEstimationNode::odomupdateCallback(const nav_msgs::OdometryConstPtr& odom) {
+  // Filling in diagonal elements of covariance matrix because the gazebo plugin leaves it as 0
+  // since it has no uncertainty, but the EKF treats 0 valued entries as infinity
+  
+  geometry_msgs::PoseWithCovarianceStamped pose;
+  pose.pose = odom->pose;
+  pose.header = odom->header;
+  pose.pose.covariance[0] = 0.001;
+  pose.pose.covariance[7] = 0.001;
+  pose.pose.covariance[14] = 0.001;
+  pose.pose.covariance[21] = 0.001;
+  pose.pose.covariance[28] = 0.001;
+  pose.pose.covariance[35] = 0.001;
+  pose_estimation_->getMeasurement("poseupdate")->add(PoseUpdate::Update(pose));
+  
+  geometry_msgs::TwistWithCovarianceStamped twist;
+  twist.twist = odom->twist;
+  twist.header = odom->header;
+  twist.twist.covariance[0] = 0.001;
+  twist.twist.covariance[7] = 0.001;
+  twist.twist.covariance[14] = 0.001;
+  twist.twist.covariance[21] = 0.001;
+  twist.twist.covariance[28] = 0.001;
+  twist.twist.covariance[35] = 0.001; 
+  pose_estimation_->getMeasurement("poseupdate")->add(PoseUpdate::Update(twist));
 }
 
 void SpiriPoseEstimationNode::poseupdateCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr& pose) {
