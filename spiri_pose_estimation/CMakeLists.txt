@@ -70,6 +70,10 @@ add_executable(spiri_pose_estimation
 )
 target_link_libraries(spiri_pose_estimation pose_estimation_node ${catkin_LIBRARIES})
 
+add_executable(spiri_sim_pose_estimation
+  src/sim_main.cpp
+)
+target_link_libraries(spiri_sim_pose_estimation sim_pose_estimation_node ${catkin_LIBRARIES})
 #############
 ## Install ##
 #############
@@ -78,7 +82,7 @@ target_link_libraries(spiri_pose_estimation pose_estimation_node ${catkin_LIBRAR
 # See http://ros.org/doc/api/catkin/html/adv_user_guide/variables.html
 
 ## Mark executables and/or libraries for installation
-install(TARGETS sim_pose_estimation_node pose_estimation_node spiri_pose_estimation
+install(TARGETS sim_pose_estimation_node pose_estimation_node spiri_pose_estimation spiri_sim_pose_estimation
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
