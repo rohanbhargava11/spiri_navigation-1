@@ -3,7 +3,7 @@
  <include file="$(find spiri_description)/launch/spiri_empty_world.launch" />
  <include file="$(find spiri_teleop)/launch/keyboard_teleop.launch" />
 
- <node name="spiri_pose_estimation" type="pose_estimation" pkg="spiri_pose_estimation" output="screen" />
+ <node name="spiri_pose_estimation" type="sim_pose_estimation" pkg="spiri_pose_estimation" output="screen" />
 
 
   <!--<include file="$(find spiri_teleop)/launch/logitech_gamepad.launch">

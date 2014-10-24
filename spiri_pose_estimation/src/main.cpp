@@ -26,6 +26,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //=================================================================================================
 
+//#include <spiri_pose_estimation/sim_pose_estimation_node.h>
 #include <spiri_pose_estimation/pose_estimation_node.h>
 
 int main(int argc, char **argv) {

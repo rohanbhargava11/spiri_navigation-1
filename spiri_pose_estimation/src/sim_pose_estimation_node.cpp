@@ -26,7 +26,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //=================================================================================================
 
-#include <spiri_pose_estimation/pose_estimation_node.h>
+#include <spiri_pose_estimation/sim_pose_estimation_node.h>
 
 #include "hector_pose_estimation/ros/parameters.h"
 #include "hector_pose_estimation/system/generic_quaternion_system_model.h"
@@ -38,7 +38,7 @@
 
 namespace hector_pose_estimation {
 
-SpiriPoseEstimationNode::SpiriPoseEstimationNode(const SystemPtr& system)
+SpiriSimPoseEstimationNode::SpiriSimPoseEstimationNode(const SystemPtr& system)
   : pose_estimation_(new PoseEstimation(system))
   , private_nh_("~")
   , transform_listener_(0)
@@ -57,20 +57,17 @@ SpiriPoseEstimationNode::SpiriPoseEstimationNode(const SystemPtr& system)
   pose_estimation_->addMeasurement(pressure);
   
   pose_estimation_->addMeasurement(new Magnetic("magnetic"));
-  
   pose_estimation_->addMeasurement(new GPS("gps"));
-  //TODO(Arnold): Enable this once there is altitude data coming back from the FC
-  //pose_estimation_->addMeasurement(new Height("gps_altitude"));
 }
 
-SpiriPoseEstimationNode::~SpiriPoseEstimationNode()
+SpiriSimPoseEstimationNode::~SpiriSimPoseEstimationNode()
 {
   cleanup();
   delete pose_estimation_;
   delete transform_listener_;
 }
 
-bool SpiriPoseEstimationNode::init() {
+bool SpiriSimPoseEstimationNode::init() {
   // get parameters
   pose_estimation_->parameters().initialize(ParameterRegistryROS(getPrivateNodeHandle()));
   getPrivateNodeHandle().param("publish_covariances", publish_covariances_, false);
@@ -87,15 +84,15 @@ bool SpiriPoseEstimationNode::init() {
     return false;
   }
 
-  imu_subscriber_        = getNodeHandle().subscribe("raw_imu", 10, &SpiriPoseEstimationNode::imuCallback, this);
-  pressure_subscriber_   = getNodeHandle().subscribe("pressure", 10, &SpiriPoseEstimationNode::pressureCallback, this);
-  range_subscriber_      = getNodeHandle().subscribe("range", 10, &SpiriPoseEstimationNode::rangeCallback, this);
-  magnetic_subscriber_   = getNodeHandle().subscribe("magnetic", 10, &SpiriPoseEstimationNode::magneticCallback, this);
+  imu_subscriber_        = getNodeHandle().subscribe("raw_imu", 10, &SpiriSimPoseEstimationNode::imuCallback, this);
+  pressure_subscriber_   = getNodeHandle().subscribe("altimeter", 10, &SpiriSimPoseEstimationNode::pressureCallback, this);
+  range_subscriber_      = getNodeHandle().subscribe("range", 10, &SpiriSimPoseEstimationNode::rangeCallback, this);
+  magnetic_subscriber_   = getNodeHandle().subscribe("magnetic", 10, &SpiriSimPoseEstimationNode::magneticCallback, this);
 
   gps_subscriber_.subscribe(getNodeHandle(), "fix", 10);
   gps_velocity_subscriber_.subscribe(getNodeHandle(), "fix_velocity", 10);
   gps_synchronizer_ = new message_filters::TimeSynchronizer<sensor_msgs::NavSatFix,geometry_msgs::Vector3Stamped>(gps_subscriber_, gps_velocity_subscriber_, 10);
-  gps_synchronizer_->registerCallback(&SpiriPoseEstimationNode::gpsCallback, this);
+  gps_synchronizer_->registerCallback(&SpiriSimPoseEstimationNode::gpsCallback, this);
 
   state_publisher_       = getNodeHandle().advertise<nav_msgs::Odometry>("state", 10, false);
   pose_publisher_        = getNodeHandle().advertise<geometry_msgs::PoseStamped>("pose", 10, false);
@@ -108,10 +105,9 @@ bool SpiriPoseEstimationNode::init() {
   linear_acceleration_bias_publisher_ = getNodeHandle().advertise<geometry_msgs::Vector3Stamped>("linear_acceleration_bias", 10, false);
   gps_pose_publisher_                 = getNodeHandle().advertise<geometry_msgs::PoseStamped>("fix/pose", 10, false);
 
-  visualodom_subscriber_  = getNodeHandle().subscribe("vo", 10, &SpiriPoseEstimationNode::visualOdomCallback, this);
-  poseupdate_subscriber_  = getNodeHandle().subscribe("poseupdate", 10, &SpiriPoseEstimationNode::poseupdateCallback, this);
-  twistupdate_subscriber_ = getNodeHandle().subscribe("twistupdate", 10, &SpiriPoseEstimationNode::twistupdateCallback, this);
-  syscommand_subscriber_  = getNodeHandle().subscribe("syscommand", 10, &SpiriPoseEstimationNode::syscommandCallback, this);
+  poseupdate_subscriber_  = getNodeHandle().subscribe("poseupdate", 10, &SpiriSimPoseEstimationNode::poseupdateCallback, this);
+  twistupdate_subscriber_ = getNodeHandle().subscribe("twistupdate", 10, &SpiriSimPoseEstimationNode::twistupdateCallback, this);
+  syscommand_subscriber_  = getNodeHandle().subscribe("syscommand", 10, &SpiriSimPoseEstimationNode::syscommandCallback, this);
 
   // publish initial state
   publish();
@@ -119,11 +115,11 @@ bool SpiriPoseEstimationNode::init() {
   return true;
 }
 
-void SpiriPoseEstimationNode::reset() {
+void SpiriSimPoseEstimationNode::reset() {
   pose_estimation_->reset();
 }
 
-void SpiriPoseEstimationNode::cleanup() {
+void SpiriSimPoseEstimationNode::cleanup() {
   pose_estimation_->cleanup();
   if (gps_synchronizer_) {
     delete gps_synchronizer_;
@@ -131,13 +127,13 @@ void SpiriPoseEstimationNode::cleanup() {
   }
 }
 
-void SpiriPoseEstimationNode::imuCallback(const sensor_msgs::ImuConstPtr& imu) {
+void SpiriSimPoseEstimationNode::imuCallback(const sensor_msgs::ImuConstPtr& imu) {
   pose_estimation_->setInput(ImuInput(*imu));
   pose_estimation_->update(imu->header.stamp);
   publish();
 }
 
-void SpiriPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& range) {
+void SpiriSimPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& range) {
   tf::StampedTransform tf;
   try {
     this->getTransformListener()->lookupTransform("range_link", "base_link",  
@@ -160,17 +156,16 @@ void SpiriPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& ra
   pose_estimation_->getMeasurement("range")->add(Height::Update(update));
 }
 
-void SpiriPoseEstimationNode::pressureCallback(const geometry_msgs::PointStamped point) {
+void SpiriSimPoseEstimationNode::pressureCallback(const hector_uav_msgs::AltimeterConstPtr& altimeter) {
   Height::MeasurementVector update;
-  // TODO (Arnold): Fill in real min altitude here
-  if (point.point.z > 0.05) {
-    update = point.point.z;
+  if (altimeter->altitude > 0.05) {
+    update = altimeter->altitude;
     pose_estimation_->getMeasurement("pressure")->add(Height::Update(update));
  }
 }
 
 
-void SpiriPoseEstimationNode::magneticCallback(const geometry_msgs::Vector3StampedConstPtr& magnetic) {
+void SpiriSimPoseEstimationNode::magneticCallback(const geometry_msgs::Vector3StampedConstPtr& magnetic) {
   Magnetic::MeasurementVector update;
   update.x() = magnetic->vector.x;
   update.y() = magnetic->vector.y;
@@ -178,7 +173,7 @@ void SpiriPoseEstimationNode::magneticCallback(const geometry_msgs::Vector3Stamp
   pose_estimation_->getMeasurement("magnetic")->add(Magnetic::Update(update));
 }
 
-void SpiriPoseEstimationNode::gpsCallback(const sensor_msgs::NavSatFixConstPtr& gps, const geometry_msgs::Vector3StampedConstPtr& gps_velocity) {
+void SpiriSimPoseEstimationNode::gpsCallback(const sensor_msgs::NavSatFixConstPtr& gps, const geometry_msgs::Vector3StampedConstPtr& gps_velocity) {
   if (gps->status.status == sensor_msgs::NavSatStatus::STATUS_NO_FIX) return;
   GPS::Update update;
   update.latitude = gps->latitude * M_PI/180.0;
@@ -203,26 +198,15 @@ void SpiriPoseEstimationNode::gpsCallback(const sensor_msgs::NavSatFixConstPtr& 
   }
 }
 
-void SpiriPoseEstimationNode::poseupdateCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr& pose) {
+void SpiriSimPoseEstimationNode::poseupdateCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr& pose) {
   pose_estimation_->getMeasurement("poseupdate")->add(PoseUpdate::Update(pose));
 }
 
-void SpiriPoseEstimationNode::twistupdateCallback(const geometry_msgs::TwistWithCovarianceStampedConstPtr& twist) {
+void SpiriSimPoseEstimationNode::twistupdateCallback(const geometry_msgs::TwistWithCovarianceStampedConstPtr& twist) {
   pose_estimation_->getMeasurement("poseupdate")->add(PoseUpdate::Update(twist));
 }
 
-void SpiriPoseEstimationNode::visualOdomCallback(const nav_msgs::Odometry vo) {
-  geometry_msgs::PoseWithCovarianceStamped pose;
-  geometry_msgs::TwistWithCovarianceStamped twist;
-  std_msgs::Header header = vo.header;
-  pose.header = header;
-  pose.pose = vo.pose;
-  twist.header = header;
-  twist.twist = vo.twist;
-  pose_estimation_->getMeasurement("poseupdate")->add(PoseUpdate::Update(pose, twist));
-}
-
-void SpiriPoseEstimationNode::syscommandCallback(const std_msgs::StringConstPtr& syscommand) {
+void SpiriSimPoseEstimationNode::syscommandCallback(const std_msgs::StringConstPtr& syscommand) {
   if (syscommand->data == "reset") {
     ROS_INFO("Resetting pose_estimation");
     pose_estimation_->reset();
@@ -230,7 +214,7 @@ void SpiriPoseEstimationNode::syscommandCallback(const std_msgs::StringConstPtr&
   }
 }
 
-void SpiriPoseEstimationNode::publish() {
+void SpiriSimPoseEstimationNode::publish() {
   if (state_publisher_) {
     nav_msgs::Odometry state;
     pose_estimation_->getState(state, publish_covariances_);
@@ -306,11 +290,11 @@ void SpiriPoseEstimationNode::publish() {
   }
 }
 
-tf::TransformBroadcaster *SpiriPoseEstimationNode::getTransformBroadcaster() {
+tf::TransformBroadcaster *SpiriSimPoseEstimationNode::getTransformBroadcaster() {
   return &transform_broadcaster_;
 }
 
-tf::TransformListener *SpiriPoseEstimationNode::getTransformListener() {
+tf::TransformListener *SpiriSimPoseEstimationNode::getTransformListener() {
   if (!transform_listener_) transform_listener_ = new tf::TransformListener();
   return transform_listener_;
 }

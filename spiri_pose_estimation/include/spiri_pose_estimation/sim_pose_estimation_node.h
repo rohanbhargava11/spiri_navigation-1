@@ -34,13 +34,7 @@
 #include <ros/ros.h>
 
 #include <sensor_msgs/Imu.h>
-#if defined(USE_MAV_MSGS)
-  #include <mav_msgs/Height.h>
-#elif defined(USE_HECTOR_UAV_MSGS)
-  #include <hector_uav_msgs/Altimeter.h>
-#else
-  #include <geometry_msgs/PointStamped.h>
-#endif
+#include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/NavSatFix.h>
 #include <geometry_msgs/QuaternionStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
@@ -48,6 +42,7 @@
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/Vector3Stamped.h>
 #include <sensor_msgs/Range.h>
+#include <hector_uav_msgs/Altimeter.h>
 #include <nav_msgs/Odometry.h>
 #include <std_msgs/String.h>
 #include <tf/transform_broadcaster.h>
@@ -58,10 +53,10 @@
 
 namespace hector_pose_estimation {
 
-class SpiriPoseEstimationNode {
+class SpiriSimPoseEstimationNode {
 public:
-  SpiriPoseEstimationNode(const SystemPtr& system = SystemPtr());
-  virtual ~SpiriPoseEstimationNode();
+  SpiriSimPoseEstimationNode(const SystemPtr& system = SystemPtr());
+  virtual ~SpiriSimPoseEstimationNode();
 
   virtual bool init();
   virtual void reset();
@@ -72,12 +67,11 @@ public:
 protected:
   void imuCallback(const sensor_msgs::ImuConstPtr& imu);
   void rangeCallback(const sensor_msgs::RangeConstPtr& range);
-  void pressureCallback(const geometry_msgs::PointStamped);
+  void pressureCallback(const hector_uav_msgs::AltimeterConstPtr& altimeter);
   void magneticCallback(const geometry_msgs::Vector3StampedConstPtr& magnetic);
   void gpsCallback(const sensor_msgs::NavSatFixConstPtr& gps, const geometry_msgs::Vector3StampedConstPtr& gps_velocity);
   void poseupdateCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr& pose);
   void twistupdateCallback(const geometry_msgs::TwistWithCovarianceStampedConstPtr& twist);
-  void visualOdomCallback(const nav_msgs::Odometry vo);
   void syscommandCallback(const std_msgs::StringConstPtr& syscommand);
 
   virtual ros::NodeHandle& getNodeHandle() { return nh_; }
@@ -99,7 +93,7 @@ private:
   message_filters::TimeSynchronizer<sensor_msgs::NavSatFix,geometry_msgs::Vector3Stamped> *gps_synchronizer_;
   ros::Publisher state_publisher_, pose_publisher_, velocity_publisher_, imu_publisher_, global_publisher_, euler_publisher_;
   ros::Publisher angular_velocity_bias_publisher_, linear_acceleration_bias_publisher_, gps_pose_publisher_;
-  ros::Subscriber poseupdate_subscriber_, twistupdate_subscriber_, visualodom_subscriber_;
+  ros::Subscriber poseupdate_subscriber_, twistupdate_subscriber_;
   ros::Subscriber syscommand_subscriber_;
 
   std::vector<tf::StampedTransform> transforms_;
