@@ -1,10 +1,26 @@
 #include <spiri_motion_primitives_server/spiri_motion_primitives_server.h>
+#include <utils/pid.h>
 
 SpiriMotionPrimitivesActionServer::SpiriMotionPrimitivesActionServer(std::string name) :
         as_(nh_, name, boost::bind(&SpiriMotionPrimitivesActionServer::processPrimitiveActionRequest, this, _1), false),
         action_name_(name)
 {
     as_.start();
+    range_sub_ = nh_.subscribe("range", 1, &SpiriMotionPrimitivesActionServer::range_callback, this);
+    
+    // TODO(Arnold): Parameterize this
+    state_sub_ = nh_.subscribe("/ground_truth/state", 1, &SpiriMotionPrimitivesActionServer::state_callback, this);
+}
+
+
+void SpiriMotionPrimitivesActionServer::range_callback(const sensor_msgs::RangeConstPtr &range)
+{
+    last_range_ = range;
+}
+
+void SpiriMotionPrimitivesActionServer::state_callback(const nav_msgs::OdometryConstPtr &odom)
+{
+    last_odom_ = odom;
 }
 
 void SpiriMotionPrimitivesActionServer::SpiriMotionPrimitivesActionServer::processPrimitiveActionRequest(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal)
@@ -66,6 +82,21 @@ void SpiriMotionPrimitivesActionServer::doLand(const spiri_motion_primitives::Sp
     }   
 }
 
+double SpiriMotionPrimitivesActionServer::getDistanceToGround()
+{
+    tf::StampedTransform tf;
+    
+    try {
+        this->getTransformListener()->lookupTransform("range_link", "base_link", 
+                           ros::Time(0), tf);
+        return last_range->range + tf.getOrigin().z();
+    }
+    catch (tf::TransformException ex){
+        ROS_ERROR("%s",ex.what());
+        return last_range->range;
+    }
+}
+
 
 void SpiriMotionPrimitivesActionServer::doHover(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal)
 {
@@ -73,7 +104,10 @@ void SpiriMotionPrimitivesActionServer::doHover(const spiri_motion_primitives::S
     
     ROS_INFO("Executing Hover: (height:%f, speed:%f)", goal->point.z, goal->speed);
     
-    int counter = 0;
+    double distance_to_ground;
+    PID height_pid(goal->point.z);
+    ros::Time last_update_time;
+    
     while (ros::ok())
     {
         if (as_.isPreemptRequested())
@@ -84,16 +118,18 @@ void SpiriMotionPrimitivesActionServer::doHover(const spiri_motion_primitives::S
             break;
         }
         
-        if (counter > goal->point.z - goal->tolerance and counter < goal->point.z + goal->tolerance)
+        
+        if ( (distance_to_ground < goal->point.z + goal->tolerance) &&
+             (distance_to_ground > goal->point.z - goal->tolerance) )
         {
             // In this case we've finished!
             success = true;
             break;
         }
         
-        counter += (int) goal->speed;
-        // Here you would update your range measurement
-        // And here you would run the PID object
+        distance_to_ground = getDistanceToGround();
+        // Still have to set dt!
+        height_pid.update(distance_to_ground, 0.1);
         
         // and put the error in the feedback
         feedback_.error = (double) goal->point.z - counter;

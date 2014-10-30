@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   spiri_description
   std_msgs
+  nav_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -92,6 +93,7 @@ catkin_package(
 # include_directories(include)
 include_directories(
   include
+  include/utils
   ${catkin_INCLUDE_DIRS}
 )
 
@@ -101,7 +103,7 @@ include_directories(
 # )
 
 ## Declare a cpp executable
-add_executable(spiri_motion_primitives_server src/spiri_motion_primitives_server.cpp)
+add_executable(spiri_motion_primitives_server src/spiri_motion_primitives_server.cpp src/pid.cpp)
 add_executable(go_to_example_client src/go_to_example_client.cpp)
 
 ## Add cmake target dependencies of the executable/library
