@@ -1,0 +1,15 @@
+string action_type
+
+geometry_msgs/Twist twist
+float32 speed
+float32 tolerance
+float32 time
+
+geometry_msgs/Point point
+---
+
+bool success
+---
+
+float32 error
+float32 time_remaining
