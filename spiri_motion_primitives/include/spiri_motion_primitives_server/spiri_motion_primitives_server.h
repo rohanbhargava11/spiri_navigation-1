@@ -1,16 +1,17 @@
 #include <ros/ros.h>
 #include <actionlib/server/simple_action_server.h>
-#include <geometry_msgs/Point.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Twist.h>
 #include <sensor_msgs/Range.h>
 #include <nav_msgs/Odometry.h>
 #include <tf/transform_listener.h>
 
-#include <spiri_motion_primitives/SpiriPrimitiveAction.h>
+#include <spiri_motion_primitives/SpiriMoveToAction.h>
 
 #ifndef SPIRI_MOTION_PRIMITIVES_SERVER
 #define SPIRI_MOTION_PRIMITIVES_SERVER
 
-typedef actionlib::SimpleActionServer<spiri_motion_primitives::SpiriPrimitiveAction> PrimitivesServer;
+typedef actionlib::SimpleActionServer<spiri_motion_primitives::SpiriMoveToAction> MoveToServer;
 
 class SpiriMotionPrimitivesActionServer
 {
@@ -18,34 +19,29 @@ class SpiriMotionPrimitivesActionServer
     SpiriMotionPrimitivesActionServer(std::string name);
     
     ~SpiriMotionPrimitivesActionServer(void) { }
-    
-    void processPrimitiveActionRequest(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal);
-    
-    void doGoTo(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal);
-    void doLand(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal);
-    void doHover(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal);
-    void doTwist(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal);
+        
+    void doMoveTo(const spiri_motion_primitives::SpiriMoveToGoalConstPtr &goal);
     
     void range_callback(const sensor_msgs::RangeConstPtr &range);
     void state_callback(const nav_msgs::OdometryConstPtr &odom);
   
   protected:
     ros::NodeHandle nh_;
-    void preemptAllServers(void);
+    double getDistanceToGround();
     
-    PrimitivesServer as_;
+    MoveToServer as_;
     std::string action_name_;
     ros::Subscriber state_sub_;
     ros::Subscriber range_sub_;
     ros::Publisher cmd_vel_pub_;
     
-    sensor_msgs::RangeConstPtr last_range_;
-    nav_msgs::OdometryConstPtr last_odom_;
+    sensor_msgs::RangeConstPtr current_range_;
+    nav_msgs::OdometryConstPtr current_odom_;
     
-    tf::Listener tf_listener;
+    tf::TransformListener tf_listener;
 
-    spiri_motion_primitives::SpiriPrimitiveFeedback feedback_;
-    spiri_motion_primitives::SpiriPrimitiveResult result_;
+    spiri_motion_primitives::SpiriMoveToFeedback feedback_;
+    spiri_motion_primitives::SpiriMoveToResult result_;
 };
 
 #endif //SPIRI_MOTION_PRIMITIVES_SERVER

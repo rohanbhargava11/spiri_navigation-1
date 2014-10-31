@@ -1,0 +1,23 @@
+#For the goal pose, the angular X and Y componants will be ignored
+#If you don't fill in the frame, MoveTo will assume you meant in the robot coordinate system
+geometry_msgs/PoseStamped pose
+
+#This will scale PID gains set through the parameter server
+float32 speed
+
+#Termination criterion, in terms of sum of squared error per dimension
+float32 tolerance
+
+#Whether the Z pose estimate is measured by the range sensor or the full state estimate
+bool use_distance_from_ground
+
+---
+
+geometry_msgs/PoseStamped pose
+---
+
+geometry_msgs/Point position_error
+float32 yaw_error
+
+#This corresponds to the termination criterion, tolerance
+float32 sum_sq_error

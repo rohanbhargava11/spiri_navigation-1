@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   spiri_description
   std_msgs
   nav_msgs
+  tf
 )
 
 ## System dependencies are found with CMake's conventions
@@ -62,7 +63,7 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 add_action_files(   DIRECTORY action
-                    FILES SpiriPrimitive.action
+                    FILES SpiriMoveTo.action
                 )
 
 generate_messages(DEPENDENCIES actionlib_msgs geometry_msgs)
@@ -80,7 +81,7 @@ generate_messages(DEPENDENCIES actionlib_msgs geometry_msgs)
 catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES spiri_motion_primitives
-  CATKIN_DEPENDS actionlib geometry_msgs sensor_msgs spiri_description std_msgs
+  CATKIN_DEPENDS actionlib geometry_msgs sensor_msgs spiri_description std_msgs tf
 #  DEPENDS system_lib
 )
 
@@ -104,21 +105,21 @@ include_directories(
 
 ## Declare a cpp executable
 add_executable(spiri_motion_primitives_server src/spiri_motion_primitives_server.cpp src/pid.cpp)
-add_executable(go_to_example_client src/go_to_example_client.cpp)
+#add_executable(go_to_example_client src/go_to_example_client.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 add_dependencies(spiri_motion_primitives_server spiri_motion_primitives_generate_messages_cpp)
-add_dependencies(go_to_example_client spiri_motion_primitives_generate_messages_cpp)
+#add_dependencies(go_to_example_client spiri_motion_primitives_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(spiri_motion_primitives_server
   ${catkin_LIBRARIES}
 )
 
-target_link_libraries(go_to_example_client
-  ${catkin_LIBRARIES}
-)
+#target_link_libraries(go_to_example_client
+#  ${catkin_LIBRARIES}
+#)
 
 #############
 ## Install ##

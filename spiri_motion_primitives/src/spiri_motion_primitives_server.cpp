@@ -1,85 +1,28 @@
 #include <spiri_motion_primitives_server/spiri_motion_primitives_server.h>
+#include <tf/transform_listener.h>
 #include <utils/pid.h>
 
 SpiriMotionPrimitivesActionServer::SpiriMotionPrimitivesActionServer(std::string name) :
-        as_(nh_, name, boost::bind(&SpiriMotionPrimitivesActionServer::processPrimitiveActionRequest, this, _1), false),
+        as_(nh_, name, boost::bind(&SpiriMotionPrimitivesActionServer::doMoveTo, this, _1), false),
         action_name_(name)
 {
     as_.start();
     range_sub_ = nh_.subscribe("range", 1, &SpiriMotionPrimitivesActionServer::range_callback, this);
-    
     // TODO(Arnold): Parameterize this
     state_sub_ = nh_.subscribe("/ground_truth/state", 1, &SpiriMotionPrimitivesActionServer::state_callback, this);
+    
+    cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("cmd_vel", 1);
 }
 
 
 void SpiriMotionPrimitivesActionServer::range_callback(const sensor_msgs::RangeConstPtr &range)
 {
-    last_range_ = range;
+    current_range_ = range;
 }
 
 void SpiriMotionPrimitivesActionServer::state_callback(const nav_msgs::OdometryConstPtr &odom)
 {
-    last_odom_ = odom;
-}
-
-void SpiriMotionPrimitivesActionServer::SpiriMotionPrimitivesActionServer::processPrimitiveActionRequest(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal)
-{
-    if (goal->action_type == "land")
-        this->doLand(goal);
-    else if (goal->action_type == "hover")
-        this->doHover(goal);
-    else if (goal->action_type == "twist")
-        this->doTwist(goal);
-    else if (goal->action_type == "goto")
-        this->doGoTo(goal);
-    else
-    {
-        ROS_INFO("Got bad primitive action request of type: %s", goal->action_type.c_str());
-        as_.setAborted();
-    }
-}
-
-void SpiriMotionPrimitivesActionServer::doLand(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal)
-{
-    bool success = false;
-    
-    ROS_INFO("Executing Land: (speed:%f)", goal->speed);
-    
-    int counter = 10;
-    while (ros::ok())
-    {
-        if (as_.isPreemptRequested())
-        {
-            // If the client has requested preempt, stop
-            as_.setPreempted();
-            success = false;
-            break;
-        }
-        
-        if (counter <= 0)
-        {
-            // In this case we've finished!
-            success = true;
-            break;
-        }
-        
-        counter -= (int) goal->speed;
-        // Here you would update your range measurement
-        // And here you would run the PID object
-        
-        // and put the error in the feedback
-        feedback_.error = (double) counter;
-        as_.publishFeedback(feedback_);
-    }
-    
-    
-    if (success)
-    {
-        result_.success = success; //true
-        ROS_INFO("%s::%s: Succeeded", action_name_.c_str(), goal->action_type.c_str());
-        as_.setSucceeded(result_);
-    }   
+    current_odom_ = odom;
 }
 
 double SpiriMotionPrimitivesActionServer::getDistanceToGround()
@@ -87,26 +30,64 @@ double SpiriMotionPrimitivesActionServer::getDistanceToGround()
     tf::StampedTransform tf;
     
     try {
-        this->getTransformListener()->lookupTransform("range_link", "base_link", 
+        tf_listener.lookupTransform("range_link", "base_link", 
                            ros::Time(0), tf);
-        return last_range->range + tf.getOrigin().z();
+        return current_range_->range + tf.getOrigin().z();
     }
     catch (tf::TransformException ex){
         ROS_ERROR("%s",ex.what());
-        return last_range->range;
+        return current_range_->range;
     }
 }
 
-
-void SpiriMotionPrimitivesActionServer::doHover(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal)
+void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::SpiriMoveToGoalConstPtr &goal)
 {
     bool success = false;
     
-    ROS_INFO("Executing Hover: (height:%f, speed:%f)", goal->point.z, goal->speed);
+    ROS_INFO("Executing Move To: frame:%s, x:%f, y:%f, z:%f; with speed:%f, tolerance:%f, distance_from_ground:%d",
+            goal->pose.header.frame_id.c_str(), goal->pose.pose.position.x, goal->pose.pose.position.y, goal->pose.pose.position.z,
+            goal->speed, goal->tolerance, goal->use_distance_from_ground );
     
-    double distance_to_ground;
-    PID height_pid(goal->point.z);
-    ros::Time last_update_time;
+    geometry_msgs::PoseStamped pose_goal;
+    
+    // Transform the goal into the requested frame
+    if ( (goal->pose.header.frame_id == "") || goal->pose.header.frame_id == "base_link")
+    {
+        pose_goal = goal->pose;
+    }
+    else
+    {
+        tf_listener.transformPose("base_link", goal->pose, pose_goal);
+    }
+    
+    // Pull the Yaw out of the orientation quaternion
+    tf::Quaternion temp_q;
+    tf::quaternionMsgToTF(pose_goal.pose.orientation, temp_q);
+    double yaw_goal = tf::getYaw(temp_q);
+    
+    // TODO(Arnold): Get these from the parameter server
+    double kp = 2.0*goal->speed;
+    double ki = 0.2*goal->speed;
+    double kd = 0.02*goal->speed;
+    double max_err = 1000;
+    double max_acc = 100;
+    
+    PID x_pid(pose_goal.pose.position.x, kp, ki, kd, max_err, max_acc);
+    PID y_pid(pose_goal.pose.position.y, kp, ki, kd, max_err, max_acc);
+    PID z_pid(pose_goal.pose.position.z, kp, ki, kd, max_err, max_acc);
+    PID yaw_pid(yaw_goal, kp, ki, kd, max_err, max_acc);
+    
+
+    geometry_msgs::PoseStamped current_pose, current_pose_base_link;
+    geometry_msgs::Twist cmd_vel;
+    double current_yaw;
+    double dt;
+    // Initializing this at time zero will make the derivative term of the PID go to zero on the first iteration
+    ros::Time last_time(0.0);
+    feedback_.sum_sq_error = -1; // This will only ever be < 0 on the first iteration
+    
+    // TODO (Arnold): Figure out if this is necessary
+    ros::Rate r(30.0);
     
     while (ros::ok())
     {
@@ -118,113 +99,59 @@ void SpiriMotionPrimitivesActionServer::doHover(const spiri_motion_primitives::S
             break;
         }
         
-        
-        if ( (distance_to_ground < goal->point.z + goal->tolerance) &&
-             (distance_to_ground > goal->point.z - goal->tolerance) )
+        if (feedback_.sum_sq_error < goal->tolerance and feedback_.sum_sq_error > 0)
         {
             // In this case we've finished!
             success = true;
             break;
         }
         
-        distance_to_ground = getDistanceToGround();
-        // Still have to set dt!
-        height_pid.update(distance_to_ground, 0.1);
+        // Update the state
+        current_pose.header = current_odom_->header;
+        current_pose.pose = current_odom_->pose.pose;
+        tf_listener.transformPose("base_link", current_pose, current_pose_base_link);
         
+        tf::quaternionMsgToTF(current_pose_base_link.pose.orientation, temp_q);
+        current_yaw = tf::getYaw(temp_q);
+        
+        if (goal->use_distance_from_ground)
+            current_pose_base_link.pose.position.z = getDistanceToGround();
+        
+        
+        dt = (last_time - current_pose_base_link.header.stamp).toSec();
+        last_time = current_pose_base_link.header.stamp;
+        
+        // Update the PIDs
+        cmd_vel.linear.x = x_pid.update(current_pose_base_link.pose.position.x, dt);
+        cmd_vel.linear.y = y_pid.update(current_pose_base_link.pose.position.y, dt);
+        cmd_vel.linear.z = z_pid.update(current_pose_base_link.pose.position.z, dt);
+        cmd_vel.angular.z = yaw_pid.update(current_yaw, dt);
+        
+        // Publish the new velocity command
+        //Just to be sure, explicity set angular x and y to 0
+        cmd_vel.angular.x = 0;
+        cmd_vel.angular.y = 0;
+        cmd_vel_pub_.publish(cmd_vel);
+                
         // and put the error in the feedback
-        feedback_.error = (double) goal->point.z - counter;
+        feedback_.position_error.x = x_pid.getLastError();
+        feedback_.position_error.y = y_pid.getLastError();
+        feedback_.position_error.z = z_pid.getLastError();
+        feedback_.yaw_error = yaw_pid.getLastError();
+        feedback_.sum_sq_error = sqrt( feedback_.position_error.x*feedback_.position_error.x +
+                                       feedback_.position_error.y*feedback_.position_error.y +
+                                       feedback_.position_error.z*feedback_.position_error.z +
+                                       feedback_.yaw_error*feedback_.yaw_error );
+        
         as_.publishFeedback(feedback_);
+        r.sleep();
     }
     
     
     if (success)
     {
-        result_.success = success; //true
-        ROS_INFO("%s::%s: Succeeded", action_name_.c_str(), goal->action_type.c_str());
-        as_.setSucceeded(result_);
-    }  
-}
-
-void SpiriMotionPrimitivesActionServer::doTwist(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal)
-{
-    
-    bool success = false;
-    
-    ROS_INFO("Executing Twist (x:%f, y:%f, z:%f, yaw:%f) for %f seconds. Ignoring roll and pitch componants", 
-        goal->twist.linear.x, goal->twist.linear.y, goal->twist.linear.z, goal->twist.angular.z, goal->time);
-        
-    feedback_.time_remaining = goal->time;
-    while (ros::ok())
-    {
-        if (as_.isPreemptRequested())
-        {
-            // If the client has requested preempt, stop
-            as_.setPreempted();
-            success = false;
-            break;
-        }
-        
-        if (feedback_.time_remaining <= 0)
-        {
-            // In this case we've finished!
-            success = true;
-            break;
-        }
-        
-        // Have to get dt here
-        feedback_.time_remaining -= 0.1;
-        as_.publishFeedback(feedback_);
-    }
-    
-    
-    if (success)
-    {
-        result_.success = success; //true
-        ROS_INFO("%s::%s: Succeeded", action_name_.c_str(), goal->action_type.c_str());
-        as_.setSucceeded(result_);
-    }  
-}
-    
-
-void SpiriMotionPrimitivesActionServer::doGoTo(const spiri_motion_primitives::SpiriPrimitiveGoalConstPtr &goal)
-{
-    bool success = false;
-    
-    ROS_INFO("Executing Go To: (x:%f, y:%f, z:%f), (speed:%f, tolerance:%f)",
-        goal->point.x, goal->point.y, goal->point.z, goal->speed, goal->tolerance);
-        
-    // Here you would create a PID object
-    
-    // Use the feedback message to control the loop
-    feedback_.error = 1.0;
-    while (ros::ok())
-    {
-        if (as_.isPreemptRequested())
-        {
-            // If the client has requested preempt, stop
-            as_.setPreempted();
-            success = false;
-            break;
-        }
-        
-        if (feedback_.error > goal->tolerance)
-        {
-            // In this case we've finished!
-            success = true;
-            break;
-        }
-        
-        
-        // And here you would run the PID object
-        
-        // and put the error in the feedback
-        as_.publishFeedback(feedback_);
-    }
-    
-    
-    if (success)
-    {
-        result_.success = success; //true
+        // Fill in the result message
+        // result_.pose = ...
         ROS_INFO("%s: Succeeded", action_name_.c_str());
         as_.setSucceeded(result_);
     }

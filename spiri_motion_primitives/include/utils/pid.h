@@ -10,6 +10,7 @@ class PID
     ~PID() { }
     
     double update(double current_state, double dt);
+    double getLastError() { return last_err; }
     
     void setSetpoint(double new_setpoint) {setpoint = new_setpoint; acc = 0;}
   protected:
