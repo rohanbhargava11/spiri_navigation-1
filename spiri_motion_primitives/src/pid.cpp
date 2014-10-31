@@ -42,5 +42,6 @@ double PID::update(double current_state, double dt)
         
     last_err = err;
     double sig_out = kp*err - kd*d_err + ki*acc;
+    
     return sig_out;    
 }

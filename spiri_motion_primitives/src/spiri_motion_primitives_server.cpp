@@ -18,6 +18,7 @@ SpiriMotionPrimitivesActionServer::SpiriMotionPrimitivesActionServer(std::string
 void SpiriMotionPrimitivesActionServer::range_callback(const sensor_msgs::RangeConstPtr &range)
 {
     current_range_ = range;
+    
 }
 
 void SpiriMotionPrimitivesActionServer::state_callback(const nav_msgs::OdometryConstPtr &odom)
@@ -32,7 +33,11 @@ double SpiriMotionPrimitivesActionServer::getDistanceToGround()
     try {
         tf_listener.lookupTransform("range_link", "base_link", 
                            ros::Time(0), tf);
-        return current_range_->range + tf.getOrigin().z();
+        if (current_range_->range >= current_range_->max_range - 0.05) {
+            return tf.getOrigin().z();
+        }
+        else
+            return current_range_->range + tf.getOrigin().z();
     }
     catch (tf::TransformException ex){
         ROS_ERROR("%s",ex.what());
@@ -68,6 +73,9 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
         }
     }
     
+    if (goal->use_distance_from_ground)
+        pose_goal.pose.position.z -= getDistanceToGround();
+    
     ROS_INFO("Goal in world frame x:%f, y:%f, z:%f", pose_goal.pose.position.x, pose_goal.pose.position.y, pose_goal.pose.position.z);
         
     // Pull the Yaw out of the orientation quaternion
@@ -77,8 +85,8 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
     
     // TODO(Arnold): Get these from the parameter server
     double kp = 0.6*goal->speed;
-    double ki = 0.0*goal->speed;
-    double kd = 0.0*goal->speed;
+    double ki = 0.03*goal->speed;
+    double kd = 0.01*goal->speed;
     double max_err = 100;
     double max_acc = 10;
     
@@ -152,7 +160,7 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
                                        feedback_.position_error.z*feedback_.position_error.z +
                                        feedback_.yaw_error*feedback_.yaw_error );
         
-        //ROS_INFO("ERROR: X:%f Y:%f, Z:%f, YAW:%F",  feedback_.position_error.x,  feedback_.position_error.y,  feedback_.position_error.z,  feedback_.yaw_error);
+        ROS_INFO("ERROR: X:%f Y:%f, Z:%f, YAW:%F",  feedback_.position_error.x,  feedback_.position_error.y,  feedback_.position_error.z,  feedback_.yaw_error);
         
         as_.publishFeedback(feedback_);
         r.sleep();
