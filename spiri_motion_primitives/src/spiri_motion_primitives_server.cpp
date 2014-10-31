@@ -87,7 +87,6 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
     tf::quaternionMsgToTF(pose_goal.pose.orientation, temp_q);
     double yaw_goal = tf::getYaw(temp_q);
     
-    // TODO(Arnold): Get these from the parameter server
     double kp = kp_*goal->speed;
     double ki = ki_*goal->speed;
     double kd = kd_*goal->speed;
