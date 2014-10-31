@@ -152,12 +152,13 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
                                        feedback_.position_error.z*feedback_.position_error.z +
                                        feedback_.yaw_error*feedback_.yaw_error );
         
-        ROS_INFO("ERROR: X:%f Y:%f, Z:%f, YAW:%F",  feedback_.position_error.x,  feedback_.position_error.y,  feedback_.position_error.z,  feedback_.yaw_error);
+        //ROS_INFO("ERROR: X:%f Y:%f, Z:%f, YAW:%F",  feedback_.position_error.x,  feedback_.position_error.y,  feedback_.position_error.z,  feedback_.yaw_error);
         
         as_.publishFeedback(feedback_);
         r.sleep();
     }
     
+    // Whether the goal is being aborted or we made it, either way we want to stop moving
     cmd_vel.linear.x = 0;
     cmd_vel.linear.y = 0;
     cmd_vel.linear.z = 0;
@@ -168,10 +169,12 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
     
     if (success)
     {
-        // Fill in the result message
-        // result_.pose = ...
-
-        
+        // Put the result back in the frame the goal was sent to us in
+        geometry_msgs::PoseStamped tmp_pose;
+        tmp_pose.header = current_odom_->header;
+        tmp_pose.pose = current_odom_->pose.pose;
+        tf_listener.waitForTransform(tmp_pose.header.frame_id, goal->pose.header.frame_id, ros::Time::now(), ros::Duration(1.0));
+        tf_listener.transformPose(goal->pose.header.frame_id, tmp_pose, result_.pose);
         
         ROS_INFO("%s: Succeeded", action_name_.c_str());
         as_.setSucceeded(result_);

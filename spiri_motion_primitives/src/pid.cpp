@@ -27,14 +27,18 @@ PID::PID(double setpoint, double kp, double ki, double kd, double max_err, doubl
 double PID::update(double current_state, double dt)
 {
     double err = setpoint - current_state;
+    if (err > max_err)
+        err = max_err;
+    else if (err < -max_err)
+        err = -max_err;
     
     double d_err = (err - last_err) / dt;
     
     acc += err;
-    if (acc > max_err)
-        acc = max_err;
-    else if (acc < -max_err)
-        acc = -max_err;
+    if (acc > max_acc)
+        acc = max_acc;
+    else if (acc < -max_acc)
+        acc = -max_acc;
         
     last_err = err;
     double sig_out = kp*err - kd*d_err + ki*acc;
