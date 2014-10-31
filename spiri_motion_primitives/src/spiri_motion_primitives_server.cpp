@@ -51,34 +51,43 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
     geometry_msgs::PoseStamped pose_goal;
     
     // Transform the goal into the requested frame
-    if ( (goal->pose.header.frame_id == "") || goal->pose.header.frame_id == "base_link")
+    if ( (goal->pose.header.frame_id == "") || goal->pose.header.frame_id == "world")
     {
         pose_goal = goal->pose;
     }
     else
     {
-        tf_listener.transformPose("base_link", goal->pose, pose_goal);
+        try {
+            tf_listener.waitForTransform("world", goal->pose.header.frame_id, ros::Time::now(), ros::Duration(1.0));
+            tf_listener.transformPose("world", goal->pose, pose_goal);
+        }
+        catch (tf::TransformException ex) {
+            ROS_ERROR("Aborting MoveTo. %s",ex.what());
+            as_.setAborted();
+            return;
+        }
     }
     
+    ROS_INFO("Goal in world frame x:%f, y:%f, z:%f", pose_goal.pose.position.x, pose_goal.pose.position.y, pose_goal.pose.position.z);
+        
     // Pull the Yaw out of the orientation quaternion
     tf::Quaternion temp_q;
     tf::quaternionMsgToTF(pose_goal.pose.orientation, temp_q);
     double yaw_goal = tf::getYaw(temp_q);
     
     // TODO(Arnold): Get these from the parameter server
-    double kp = 2.0*goal->speed;
-    double ki = 0.2*goal->speed;
-    double kd = 0.02*goal->speed;
-    double max_err = 1000;
-    double max_acc = 100;
+    double kp = 0.6*goal->speed;
+    double ki = 0.0*goal->speed;
+    double kd = 0.0*goal->speed;
+    double max_err = 100;
+    double max_acc = 10;
     
     PID x_pid(pose_goal.pose.position.x, kp, ki, kd, max_err, max_acc);
     PID y_pid(pose_goal.pose.position.y, kp, ki, kd, max_err, max_acc);
     PID z_pid(pose_goal.pose.position.z, kp, ki, kd, max_err, max_acc);
     PID yaw_pid(yaw_goal, kp, ki, kd, max_err, max_acc);
-    
 
-    geometry_msgs::PoseStamped current_pose, current_pose_base_link;
+    geometry_msgs::PoseStamped current_pose, current_pose_world_frame;
     geometry_msgs::Twist cmd_vel;
     double current_yaw;
     double dt;
@@ -109,22 +118,22 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
         // Update the state
         current_pose.header = current_odom_->header;
         current_pose.pose = current_odom_->pose.pose;
-        tf_listener.transformPose("base_link", current_pose, current_pose_base_link);
+        tf_listener.transformPose("world", current_pose, current_pose_world_frame);
         
-        tf::quaternionMsgToTF(current_pose_base_link.pose.orientation, temp_q);
+        tf::quaternionMsgToTF(current_pose_world_frame.pose.orientation, temp_q);
         current_yaw = tf::getYaw(temp_q);
         
         if (goal->use_distance_from_ground)
-            current_pose_base_link.pose.position.z = getDistanceToGround();
+            current_pose_world_frame.pose.position.z = getDistanceToGround();
         
         
-        dt = (last_time - current_pose_base_link.header.stamp).toSec();
-        last_time = current_pose_base_link.header.stamp;
+        dt = (last_time - current_pose_world_frame.header.stamp).toSec();
+        last_time = current_pose_world_frame.header.stamp;
         
         // Update the PIDs
-        cmd_vel.linear.x = x_pid.update(current_pose_base_link.pose.position.x, dt);
-        cmd_vel.linear.y = y_pid.update(current_pose_base_link.pose.position.y, dt);
-        cmd_vel.linear.z = z_pid.update(current_pose_base_link.pose.position.z, dt);
+        cmd_vel.linear.x = x_pid.update(current_pose_world_frame.pose.position.x, dt);
+        cmd_vel.linear.y = y_pid.update(current_pose_world_frame.pose.position.y, dt);
+        cmd_vel.linear.z = z_pid.update(current_pose_world_frame.pose.position.z, dt);
         cmd_vel.angular.z = yaw_pid.update(current_yaw, dt);
         
         // Publish the new velocity command
@@ -143,15 +152,27 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
                                        feedback_.position_error.z*feedback_.position_error.z +
                                        feedback_.yaw_error*feedback_.yaw_error );
         
+        ROS_INFO("ERROR: X:%f Y:%f, Z:%f, YAW:%F",  feedback_.position_error.x,  feedback_.position_error.y,  feedback_.position_error.z,  feedback_.yaw_error);
+        
         as_.publishFeedback(feedback_);
         r.sleep();
     }
     
+    cmd_vel.linear.x = 0;
+    cmd_vel.linear.y = 0;
+    cmd_vel.linear.z = 0;
+    cmd_vel.angular.x = 0;
+    cmd_vel.angular.y = 0;
+    cmd_vel.angular.z = 0;
+    cmd_vel_pub_.publish(cmd_vel);
     
     if (success)
     {
         // Fill in the result message
         // result_.pose = ...
+
+        
+        
         ROS_INFO("%s: Succeeded", action_name_.c_str());
         as_.setSucceeded(result_);
     }

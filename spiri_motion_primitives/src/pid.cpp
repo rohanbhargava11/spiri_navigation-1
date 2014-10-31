@@ -36,6 +36,7 @@ double PID::update(double current_state, double dt)
     else if (acc < -max_err)
         acc = -max_err;
         
+    last_err = err;
     double sig_out = kp*err - kd*d_err + ki*acc;
     return sig_out;    
 }
