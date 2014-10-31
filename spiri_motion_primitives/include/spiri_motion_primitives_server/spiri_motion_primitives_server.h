@@ -27,13 +27,14 @@ class SpiriMotionPrimitivesActionServer
   
   protected:
     ros::NodeHandle nh_;
-    double getDistanceToGround();
+    double getDistanceToGround();;
     
     MoveToServer as_;
     std::string action_name_;
     ros::Subscriber state_sub_;
     ros::Subscriber range_sub_;
     ros::Publisher cmd_vel_pub_;
+    double kp_, ki_, kd_;
     
     sensor_msgs::RangeConstPtr current_range_;
     nav_msgs::OdometryConstPtr current_odom_;

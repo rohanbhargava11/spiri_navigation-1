@@ -12,6 +12,10 @@ SpiriMotionPrimitivesActionServer::SpiriMotionPrimitivesActionServer(std::string
     state_sub_ = nh_.subscribe("/ground_truth/state", 1, &SpiriMotionPrimitivesActionServer::state_callback, this);
     
     cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("cmd_vel", 1);
+    
+    nh_.param<double>("spiri_motion_primitives/kp", kp_, 0.6);
+    nh_.param<double>("spiri_motion_primitives/kp", ki_, 0.03);
+    nh_.param<double>("spiri_motion_primitives/kp", kd_, 0.01);
 }
 
 
@@ -84,9 +88,9 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
     double yaw_goal = tf::getYaw(temp_q);
     
     // TODO(Arnold): Get these from the parameter server
-    double kp = 0.6*goal->speed;
-    double ki = 0.03*goal->speed;
-    double kd = 0.01*goal->speed;
+    double kp = kp_*goal->speed;
+    double ki = ki_*goal->speed;
+    double kd = kd_*goal->speed;
     double max_err = 100;
     double max_acc = 10;
     
