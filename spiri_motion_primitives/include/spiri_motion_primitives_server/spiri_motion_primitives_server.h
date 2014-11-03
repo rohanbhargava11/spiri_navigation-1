@@ -27,7 +27,7 @@ class SpiriMotionPrimitivesActionServer
   
   protected:
     ros::NodeHandle nh_;
-    double getDistanceToGround();;
+    double getDistanceToGround();
     
     MoveToServer as_;
     std::string action_name_;

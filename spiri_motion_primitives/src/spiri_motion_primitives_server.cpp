@@ -15,7 +15,7 @@ SpiriMotionPrimitivesActionServer::SpiriMotionPrimitivesActionServer(std::string
     
     nh_.param<double>("spiri_motion_primitives/kp", kp_, 0.6);
     nh_.param<double>("spiri_motion_primitives/kp", ki_, 0.03);
-    nh_.param<double>("spiri_motion_primitives/kp", kd_, 0.01);
+    nh_.param<double>("spiri_motion_primitives/kp", kd_, 0.003);
 }
 
 
@@ -57,18 +57,18 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
             goal->pose.header.frame_id.c_str(), goal->pose.pose.position.x, goal->pose.pose.position.y, goal->pose.pose.position.z,
             goal->speed, goal->tolerance, goal->use_distance_from_ground );
     
-    geometry_msgs::PoseStamped pose_goal;
+    geometry_msgs::PoseStamped goal_world_frame;
     
-    // Transform the goal into the requested frame
+    // Transform the from the requested frame into the world frame
     if ( (goal->pose.header.frame_id == "") || goal->pose.header.frame_id == "world")
     {
-        pose_goal = goal->pose;
+        goal_world_frame = goal->pose;
     }
     else
     {
         try {
-            tf_listener.waitForTransform("world", goal->pose.header.frame_id, ros::Time::now(), ros::Duration(1.0));
-            tf_listener.transformPose("world", goal->pose, pose_goal);
+            tf_listener.waitForTransform(goal->pose.header.frame_id, "world", ros::Time::now(), ros::Duration(1.0));
+            tf_listener.transformPose("world", ros::Time(0), goal->pose, goal->pose.header.frame_id, goal_world_frame);
         }
         catch (tf::TransformException ex) {
             ROS_ERROR("Aborting MoveTo. %s",ex.what());
@@ -77,15 +77,11 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
         }
     }
     
-    if (goal->use_distance_from_ground)
-        pose_goal.pose.position.z -= getDistanceToGround();
+    //if (goal->use_distance_from_ground)
+    //    goal_world_frame.pose.position.z += getDistanceToGround();
     
-    ROS_INFO("Goal in world frame x:%f, y:%f, z:%f", pose_goal.pose.position.x, pose_goal.pose.position.y, pose_goal.pose.position.z);
+    ROS_INFO("Goal in world frame x:%f, y:%f, z:%f", goal_world_frame.pose.position.x, goal_world_frame.pose.position.y, goal_world_frame.pose.position.z);
         
-    // Pull the Yaw out of the orientation quaternion
-    tf::Quaternion temp_q;
-    tf::quaternionMsgToTF(pose_goal.pose.orientation, temp_q);
-    double yaw_goal = tf::getYaw(temp_q);
     
     double kp = kp_*goal->speed;
     double ki = ki_*goal->speed;
@@ -93,15 +89,17 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
     double max_err = 100;
     double max_acc = 10;
     
-    PID x_pid(pose_goal.pose.position.x, kp, ki, kd, max_err, max_acc);
-    PID y_pid(pose_goal.pose.position.y, kp, ki, kd, max_err, max_acc);
-    PID z_pid(pose_goal.pose.position.z, kp, ki, kd, max_err, max_acc);
-    PID yaw_pid(yaw_goal, kp, ki, kd, max_err, max_acc);
+    PID x_pid(kp, ki, kd, max_err, max_acc, false);
+    PID y_pid(kp, ki, kd, max_err, max_acc, false);
+    PID z_pid(kp, ki, kd, max_err, max_acc, false);
+    PID yaw_pid(kp, ki, kd, max_err, max_acc, true);
 
-    geometry_msgs::PoseStamped current_pose, current_pose_world_frame;
+    geometry_msgs::PoseStamped goal_current_baselink_frame;
     geometry_msgs::Twist cmd_vel;
+    tf::Quaternion temp_q;
     double current_yaw;
     double dt;
+    
     // Initializing this at time zero will make the derivative term of the PID go to zero on the first iteration
     ros::Time last_time(0.0);
     feedback_.sum_sq_error = -1; // This will only ever be < 0 on the first iteration
@@ -126,25 +124,27 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
             break;
         }
         
+    
         // Update the state
-        current_pose.header = current_odom_->header;
-        current_pose.pose = current_odom_->pose.pose;
-        tf_listener.transformPose("world", current_pose, current_pose_world_frame);
-        
-        tf::quaternionMsgToTF(current_pose_world_frame.pose.orientation, temp_q);
-        current_yaw = tf::getYaw(temp_q);
+        tf_listener.waitForTransform("world", "base_link", ros::Time::now(), ros::Duration(1.0));
+        tf_listener.transformPose("base_link", ros::Time(0), goal_world_frame, "world", goal_current_baselink_frame);
         
         if (goal->use_distance_from_ground)
-            current_pose_world_frame.pose.position.z = getDistanceToGround();
+            goal_current_baselink_frame.pose.position.z = goal_world_frame.pose.position.z - getDistanceToGround();
+       
         
+        tf::quaternionMsgToTF(goal_current_baselink_frame.pose.orientation, temp_q);
+        current_yaw = tf::getYaw(temp_q);
+                
+        dt = (ros::Time::now() - last_time).toSec();
+        last_time = current_odom_->header.stamp;
+        if (dt < 1e-6) dt = 1e-6; // avoid divide by zero. TODO (Arnold): Remove this hack
+    
         
-        dt = (last_time - current_pose_world_frame.header.stamp).toSec();
-        last_time = current_pose_world_frame.header.stamp;
-        
-        // Update the PIDs
-        cmd_vel.linear.x = x_pid.update(current_pose_world_frame.pose.position.x, dt);
-        cmd_vel.linear.y = y_pid.update(current_pose_world_frame.pose.position.y, dt);
-        cmd_vel.linear.z = z_pid.update(current_pose_world_frame.pose.position.z, dt);
+        // Update the PIDs. The position of the goal in the base_link frame is the same as the position error
+        cmd_vel.linear.x = x_pid.update(goal_current_baselink_frame.pose.position.x, dt);
+        cmd_vel.linear.y = y_pid.update(goal_current_baselink_frame.pose.position.y, dt);
+        cmd_vel.linear.z = z_pid.update(goal_current_baselink_frame.pose.position.z, dt);
         cmd_vel.angular.z = yaw_pid.update(current_yaw, dt);
         
         // Publish the new velocity command
@@ -154,16 +154,18 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
         cmd_vel_pub_.publish(cmd_vel);
                 
         // and put the error in the feedback
+        // don't really need to do this this way any more
         feedback_.position_error.x = x_pid.getLastError();
         feedback_.position_error.y = y_pid.getLastError();
         feedback_.position_error.z = z_pid.getLastError();
         feedback_.yaw_error = yaw_pid.getLastError();
+        
         feedback_.sum_sq_error = sqrt( feedback_.position_error.x*feedback_.position_error.x +
                                        feedback_.position_error.y*feedback_.position_error.y +
                                        feedback_.position_error.z*feedback_.position_error.z +
                                        feedback_.yaw_error*feedback_.yaw_error );
         
-        ROS_INFO("ERROR: X:%f Y:%f, Z:%f, YAW:%F",  feedback_.position_error.x,  feedback_.position_error.y,  feedback_.position_error.z,  feedback_.yaw_error);
+        ROS_INFO("dt: %f: ERROR: X:%f Y:%f, Z:%f, YAW:%F",  dt, feedback_.position_error.x,  feedback_.position_error.y,  feedback_.position_error.z,  feedback_.yaw_error);
         
         as_.publishFeedback(feedback_);
         r.sleep();

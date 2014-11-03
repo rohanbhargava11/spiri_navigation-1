@@ -16,7 +16,7 @@
  * Land
  */
 
-void sendGoal(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToAction> *ac, spiri_motion_primitives::SpiriMoveToGoal goal)
+bool sendGoal(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToAction> *ac, spiri_motion_primitives::SpiriMoveToGoal goal)
 {
     ac->sendGoal(goal);
 
@@ -27,19 +27,21 @@ void sendGoal(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveTo
     {
         actionlib::SimpleClientGoalState state = ac->getState();
         ROS_INFO("Action finished: %s",state.toString().c_str());
+        return true;
     }
     else
     {
         ac->cancelGoal();
         ROS_INFO("Action did not finish before the time out.");
+        return false;
     }
 }
 
-void takeoff(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToAction> *ac, double height)
+bool takeoff(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToAction> *ac, double height)
 {
     spiri_motion_primitives::SpiriMoveToGoal goal;
     goal.pose.header.stamp = ros::Time::now();
-    goal.pose.header.frame_id = "base_link";
+    goal.pose.header.frame_id = "world";
     goal.pose.pose.position.x = 0.0;
     goal.pose.pose.position.y = 0.0;
     goal.pose.pose.position.z = height;
@@ -50,14 +52,14 @@ void takeoff(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToA
     goal.tolerance = 0.1;
     goal.use_distance_from_ground = true;
     
-    sendGoal(ac, goal);
+    return sendGoal(ac, goal);
 }
 
-void land(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToAction> *ac)
+bool land(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToAction> *ac)
 {
     spiri_motion_primitives::SpiriMoveToGoal goal;
     goal.pose.header.stamp = ros::Time::now();
-    goal.pose.header.frame_id = "base_link";
+    goal.pose.header.frame_id = "world";
     goal.pose.pose.position.x = 0.0;
     goal.pose.pose.position.y = 0.0;
     goal.pose.pose.position.z = 0.0;
@@ -68,10 +70,10 @@ void land(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToActi
     goal.tolerance = 0.05;
     goal.use_distance_from_ground = true;
     
-    sendGoal(ac, goal);
+    return sendGoal(ac, goal);
 }
 
-void move_relative(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToAction> *ac, double x, double y, double z, double yaw)
+bool move_relative(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToAction> *ac, double x, double y, double z, double yaw)
 {
     spiri_motion_primitives::SpiriMoveToGoal goal;
     goal.pose.header.stamp = ros::Time::now();
@@ -86,10 +88,10 @@ void move_relative(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriM
     goal.tolerance = 0.1;
     goal.use_distance_from_ground = false;
     
-    sendGoal(ac, goal);
+    return sendGoal(ac, goal);
 }
 
-void move_world(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToAction> *ac, double x, double y, double z, double yaw)
+bool move_world(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMoveToAction> *ac, double x, double y, double z, double yaw)
 {
     spiri_motion_primitives::SpiriMoveToGoal goal;
     goal.pose.header.stamp = ros::Time::now();
@@ -104,7 +106,7 @@ void move_world(actionlib::SimpleActionClient<spiri_motion_primitives::SpiriMove
     goal.tolerance = 0.1;
     goal.use_distance_from_ground = false;
     
-    sendGoal(ac, goal);
+    return sendGoal(ac, goal);
 }
 
 
@@ -120,28 +122,52 @@ int main (int argc, char **argv)
     // wait for the action server to start
     ac.waitForServer(); //will wait for infinite time
     ROS_INFO("Action server started.");
-    ros::Duration s(1);
+    ros::Duration s(0.1);
     
-    takeoff(&ac, 2.5);
+    double z = 2;
+    takeoff(&ac, z);
     s.sleep();
-    move_relative(&ac, 3.0, 0.0, 0.0, 0.0);
-    s.sleep();
-    move_relative(&ac, 0.0, 3.0, 0.0, 0.0);
-    s.sleep();
-    move_relative(&ac, 0.0, 0.0, 3.0, 0.0);
-    s.sleep();
-    move_relative(&ac, -3.0, 0.0, 0.0, 0.0);
-    s.sleep();
-    move_relative(&ac, 0.0, -3.0, 0.0, 0.0);
-    s.sleep();
-    move_relative(&ac, 0.0, 0.0, 0.0, 1.59);
-    s.sleep();
-    move_world(&ac, 3.0, 3.0, 3.0, 0.0);
-    s.sleep();
-    land(&ac);
-    s.sleep();
+    //move_relative(&ac, 0, 0, 0, M_PI);
+    //s.sleep();
+    
+    double R = 3.0;
+    int N = 45;
+    for (int i = 0; i <= N; i++)
+    {
+        double theta = i*(2*M_PI/N);
+        double x = R*cos(theta);
+        double y = R*sin(theta);
+        double psi = -M_PI/2 + atan2((R-x), y);
+        move_world(&ac, x, y, z, psi);
+        //s.sleep();
+    }
+    
+    
+    /*for (int i = 0; i < 3; i++)
+        {
+        move_relative(&ac, 1.0, 0.0, 0.0, 0.0);
+        s.sleep();
+        move_relative(&ac, 0.0, 1.0, 0.0, 0.0);
+        s.sleep();
+        move_relative(&ac, 0.0, 0.0, 1.0, 0.0);
+        s.sleep();
+        move_relative(&ac, 0.0, 0.0, 0.0, 1.0);
+        s.sleep();
+        move_relative(&ac, -1.0, 0.0, 0.0, 0.0);
+        s.sleep();
+        move_relative(&ac, 0.0, -1.0, 0.0, 0.0);
+        s.sleep();
+        move_relative(&ac, 0.0, 0.0, -1.0, 0.0);
+        s.sleep();
+        move_relative(&ac, 0.0, 0.0, 0.0, -1.0);
+        s.sleep();
+    }*/
+
     move_world(&ac, 0.0,0.0,1.0,0.0);
+    s.sleep();
     land(&ac);
+    
+    
     
    
     //exit
