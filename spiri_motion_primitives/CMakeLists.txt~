@@ -141,11 +141,11 @@ target_link_libraries(example_motions
 # )
 
 ## Mark executables and/or libraries for installation
- install(TARGETS spiri_motion_primitives_server
+# install(TARGETS spiri_motion_primitives spiri_motion_primitives_node
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
- )
+#   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# )
 
 ## Mark cpp header files for installation
 install(DIRECTORY include/${PROJECT_NAME}/
