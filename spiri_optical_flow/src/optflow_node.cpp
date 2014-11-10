@@ -19,7 +19,7 @@ static const std::string win = "Optical Flow";
 class OptFlow
 {
   cv::Mat prevImg, prevH;
-  vector<Point2f> prevPoints, origPoints;
+  vector<Point2f> prevPoints, prev3d, orig3d;
   
   const int _min_kp, _max_kp, _min_match;
   int _seq;
@@ -88,7 +88,7 @@ public:
  */
   void img_cb(const sensor_msgs::ImageConstPtr & msg)
   {
-    vector<Point2f> points, orig3d, prev3d, curr3d;  vector<uchar> match;  vector<float> err;
+    vector<Point2f> currPoints, curr3d;  vector<uchar> match, match1;  vector<float> err;
     cv::Mat disp_img, img = cv_bridge::toCvCopy(msg,"mono8")->image;
 
     const bool reinit = prevPoints.size() < _min_kp;
@@ -96,7 +96,6 @@ public:
       if (prevImg.empty()) { cv::swap(prevImg,img); ROS_INFO("OptFlow image rows=%i, cols=%i", img.rows, img.cols); return; }
       prevH = Mat::eye(3, 3, CV_32FC1);
       goodFeaturesToTrack(prevImg, prevPoints, _max_kp, 0.02, prevImg.cols >> 6); //min 10pix separation for 640x480
-      origPoints = prevPoints;
       if (prevPoints.size() < _min_kp) {
         //goodFeaturesToTrack(prevImg, prevPoints, _max_kp, 0.01, prevImg.cols >> 6);
         //if (prevPoints.size() < _min_kp) {
@@ -107,36 +106,40 @@ public:
         return;
       }
       cornerSubPix(prevImg, prevPoints, _subPixWinSz, Size(-1,-1), _termcrit); //over-kill?
+      prev3d.clear(); prev3d.resize(prevPoints.size());
+      for( size_t i = 0; i < prevPoints.size(); i++ ) {
+        if ( _cam_info_is_useful ) {
+          Point3d prev = _cam_model.projectPixelTo3dRay( _cam_model.rectifyPoint(prevPoints[i]) );
+          prev3d[i] = _altitude * Point2f(prev.x,prev.y);
+        } else {
+          prev3d[i] = (prevPoints[i] - Point2f(img.rows>>1, img.cols>>1)) * (1.0f/img.rows);
+        }
+      }
+      orig3d = prev3d;
     }
-    calcOpticalFlowPyrLK(prevImg, img, prevPoints, points, match, err, _winSz, 3, _termcrit, 0, 1E-3);
+    
+    calcOpticalFlowPyrLK(prevImg, img, prevPoints, currPoints, match, err, _winSz, 3, _termcrit, 0, 1E-3);
     
     if (_display) img.copyTo(disp_img);
     size_t nmatch = 0;
-    for( size_t i = 0; i < points.size(); i++ ) {
+    for( size_t i = 0; i < currPoints.size(); i++ ) {
       if ( !match[i] ) continue;
       if ( _cam_info_is_useful ) {
-        Point3d prev = _cam_model.projectPixelTo3dRay( _cam_model.rectifyPoint(prevPoints[i]) ),
-                curr = _cam_model.projectPixelTo3dRay( _cam_model.rectifyPoint(    points[i]) ),
-                orig = _cam_model.projectPixelTo3dRay( _cam_model.rectifyPoint(origPoints[i]) );
-        prev3d.push_back(_altitude * Point2f(prev.x,prev.y));
+        Point3d curr = _cam_model.projectPixelTo3dRay( _cam_model.rectifyPoint(currPoints[i]) );
         curr3d.push_back(_altitude * Point2f(curr.x,curr.y));
-        orig3d.push_back(_altitude * Point2f(orig.x,orig.y));
       } else {
-        prev3d.push_back((prevPoints[i]-Point2f(img.rows>>1, img.cols>>1)) * (1.0f/img.rows));
-        curr3d.push_back((    points[i]-Point2f(img.rows>>1, img.cols>>1)) * (1.0f/img.rows));
-        orig3d.push_back((origPoints[i]-Point2f(img.rows>>1, img.cols>>1)) * (1.0f/img.rows));
+        curr3d.push_back((    currPoints[i]-Point2f(img.rows>>1, img.cols>>1)) * (1.0f/img.rows));
       }
       if ( _display ) {
-        //circle( disp_img, points[i], 2, Scalar(255), -1, 8);
-        line( disp_img, prevPoints[i], points[i], Scalar(255), 1);
+        //circle( disp_img, currPoints[i], 2, Scalar(255), -1, 8);
+        line( disp_img, prevPoints[i], currPoints[i], Scalar(255), 1);
       }
-      prevPoints[nmatch] = points[i];
-      origPoints[nmatch] = origPoints[i];
+      currPoints[nmatch] = currPoints[i];  orig3d[nmatch] = orig3d[i];  prev3d[nmatch] = prev3d[i];
       nmatch++;
     }
-    prevPoints.resize(nmatch);
-    origPoints.resize(nmatch);
-    cv::swap(prevImg, img);
+    currPoints.resize(nmatch);  orig3d.resize(nmatch);  prev3d.resize(nmatch);
+    
+    cv::swap(prevImg, img);  prevPoints = currPoints;
     if (nmatch < _min_match) {
       if (reinit) { ROS_WARN("OptFlow: not enough LK matches to previous image, tracking lost."); } 
                    //reset _x,_y? H_prev?  publish previous dx,dy?
@@ -144,27 +147,25 @@ public:
       return; 
     }
     
-    vector<uchar> match1;
     //If Homography to last feature detection gives translation close to homography to previous image,
     //assume the former is ok and use it to reduce integration errors, otherwise use the latter.
-    Mat H = findHomography(orig3d, curr3d, RANSAC, 4, match),
+    Mat H = findHomography(orig3d, curr3d, RANSAC, 4, match ),
         H1= findHomography(prev3d, curr3d, RANSAC, 4, match1);
     double dx = H.at<double>(0,2) - prevH.at<double>(0,2),
            dy = H.at<double>(1,2) - prevH.at<double>(1,2);
     if ( abs( H1.at<double>(0,2) - dx ) > .01 || abs( H1.at<double>(1,2) - dy ) > .01 ) {
-      H = H1;  match = match1;  origPoints = prevPoints;  orig3d = prev3d;
+      H = H1;  match = match1;  orig3d = prev3d;
       dx = H.at<double>(0,2);  dy = H.at<double>(1,2);
     }
     nmatch = 0;
     for( size_t i = 0; i < prev3d.size(); i++ ) {
       if ( !match[i] ) continue;
-      if ( _display ) { circle( disp_img, prevPoints[i], 2, Scalar(255), -1, 8); }
-      prev3d[nmatch] = prev3d[i];  prevPoints[nmatch] = prevPoints[i];
-      orig3d[nmatch] = orig3d[i];  origPoints[nmatch] = origPoints[i];
+      if ( _display ) { circle( disp_img, currPoints[i], 2, Scalar(255), -1, 8); }
+      currPoints[nmatch] = currPoints[i];  curr3d[nmatch] = curr3d[i];  orig3d[nmatch] = orig3d[i];
       nmatch++;
     }
-    prev3d.resize(nmatch);  prevPoints.resize(nmatch);
-    orig3d.resize(nmatch);  origPoints.resize(nmatch);
+    curr3d.resize(nmatch);  currPoints.resize(nmatch);  orig3d.resize(nmatch);
+    prev3d = curr3d;
     
     //TODO find a better indicator that the homography is bogus than speed>.1m/frame (3m/s @ 30fps)
     if (nmatch < _min_match || dx*dx+dy*dy > .01) {
@@ -189,11 +190,11 @@ public:
     p.point.x = _x; p.point.y = _y; p.point.z = _altitude;
     _pub->publish(p);
     
-    if (_seq%10 == 0) {
-      ROS_INFO("OptFlow pose: cumulative = %.3f,%.3f . since key frame = %.3f, %.3f . since prev = %.3f, %.3f",
-               _x, _y , H.at<double>(0,2), H.at<double>(1,2), dx, dy);
-    }
     if (_display) {
+      if (_seq%100 == 0) {
+        ROS_INFO("OptFlow pose: cumulative = %.3f,%.3f . since key frame = %.3f, %.3f . since prev = %.3f, %.3f",
+                 _x, _y , H.at<double>(0,2), H.at<double>(1,2), dx, dy);
+      }
       line( disp_img, Point2d(30.0,30.0), Point2d(30.0+50.*_x,30.0+50.*_y), Scalar(255), 2);
       std::ostringstream os; os << nmatch;//FONT_HERSHEY_PLAIN
       putText(disp_img, os.str(), Point(0,15), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0), 2);//, 8);
