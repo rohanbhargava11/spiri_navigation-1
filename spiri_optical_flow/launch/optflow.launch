@@ -1,0 +1,12 @@
+<launch>
+
+    <node pkg="image_proc" type="image_proc" name="image_proc" ns="/camera" output="screen" />
+    
+    <node pkg="spiri_optical_flow" type="optflow_node" name="optflow" output="screen">
+        <param name="cam_topic" value="/camera/image_mono" />
+        <param name="caminfo_topic" value="/camera/camera_info" />
+        <param name="display" value="true" />
+        <param name="threshold" value="0.0" />
+    </node>
+
+</launch>
