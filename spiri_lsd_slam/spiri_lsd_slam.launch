@@ -1,0 +1,15 @@
+<launch>
+    
+    <include file="$(find spiri_description)/launch/spiri_citadel.launch" />
+    
+    <node name="lsd_slam_live" type="live_slam" pkg="lsd_slam_core" output="screen">
+        <remap from="image" to="/downward_cam/camera/image" />
+        <remap from="camera_info" to="/downward_cam/camera/camera_info" />
+    </node>
+    
+    <!-- Useful UI nodes
+    <node name="lsd_slam_viewer" type="viewer" pkg="lsd_slam_viewer" output="screen"/>
+    <node name="keyboard_teleop" type="keyboard_teleop.py" pkg="spiri_teleop" output="screen" />
+    -->
+    
+</launch>
