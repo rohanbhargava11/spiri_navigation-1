@@ -44,9 +44,11 @@
   <build_depend>geometry_msgs</build_depend>
   <build_depend>sensor_msgs</build_depend>
   <build_depend>spiri_description</build_depend>
+  <build_depend>spiri_ros_drivers</build_depend>
   <build_depend>std_msgs</build_depend>
   <build_depend>nav_msgs</build_depend>
   <build_depend>tf</build_depend>
+  <build_depend>message_filters</build_depend>
   <run_depend>actionlib</run_depend>
   <run_depend>geometry_msgs</run_depend>
   <run_depend>sensor_msgs</run_depend>
@@ -54,6 +56,8 @@
   <run_depend>std_msgs</run_depend>
   <run_depend>nav_msgs</run_depend>
   <run_depend>tf</run_depend>
+  <run_depend>message_filters</run_depend>
+  <run_depend>spiri_ros_drivers</run_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

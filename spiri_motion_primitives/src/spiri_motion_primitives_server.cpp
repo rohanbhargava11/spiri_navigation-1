@@ -9,13 +9,13 @@ SpiriMotionPrimitivesActionServer::SpiriMotionPrimitivesActionServer(std::string
     as_.start();
     range_sub_ = nh_.subscribe("range", 1, &SpiriMotionPrimitivesActionServer::range_callback, this);
     // TODO(Arnold): Parameterize this
-    state_sub_ = nh_.subscribe("/ground_truth/state", 1, &SpiriMotionPrimitivesActionServer::state_callback, this);
+    state_sub_ = nh_.subscribe("/state", 1, &SpiriMotionPrimitivesActionServer::state_callback, this);
     
     cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("cmd_vel", 1);
     
     nh_.param<double>("spiri_motion_primitives/kp", kp_, 0.6);
-    nh_.param<double>("spiri_motion_primitives/kp", ki_, 0.03);
-    nh_.param<double>("spiri_motion_primitives/kp", kd_, 0.003);
+    nh_.param<double>("spiri_motion_primitives/ki", ki_, 0.03);
+    nh_.param<double>("spiri_motion_primitives/kd", kd_, 0.003);
 }
 
 
@@ -101,7 +101,8 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
     double dt;
     
     // Initializing this at time zero will make the derivative term of the PID go to zero on the first iteration
-    ros::Time last_time(0.0);
+    // but time(0) is now by convention, so can't do that exactly
+    ros::Time last_time(1e-6);
     feedback_.sum_sq_error = -1; // This will only ever be < 0 on the first iteration
     
     // TODO (Arnold): Figure out if this is necessary

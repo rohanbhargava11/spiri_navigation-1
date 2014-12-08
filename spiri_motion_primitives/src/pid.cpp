@@ -49,3 +49,10 @@ double PID::update(double err, double dt)
     
     return sig_out;    
 }
+
+
+void PID::reset()
+{
+    acc = 0.;
+    last_err = 0.;
+}

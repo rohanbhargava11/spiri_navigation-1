@@ -1,5 +1,8 @@
 #include <math.h>
 
+#ifndef PID_HEADER
+#define PID_HEADER
+
 class PID
 {
   public:
@@ -10,6 +13,7 @@ class PID
     
     double update(double err, double dt);
     double getLastError() { return last_err; }
+    void reset(void);
     
   protected:
     double kp, ki, kd;
@@ -19,3 +23,5 @@ class PID
     bool angular;
     
 };
+
+#endif //PID_HEADER
