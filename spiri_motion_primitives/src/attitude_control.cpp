@@ -4,16 +4,17 @@
 #include <tf/transform_datatypes.h>
 #include <math.h>
 
-AttitudeController::AttitudeController()
+AttitudeController::AttitudeController(void) : nh_("~")
 {
-    nh_.param<double>("spiri_attitude_control/kp", kp_, 0.6);
-    nh_.param<double>("spiri_attitude_control/ki", ki_, 0.03);
-    nh_.param<double>("spiri_attitude_control/kd", kd_, 0.003);
-    nh_.param<double>("spiri_attitude_control/max_roll", max_roll_, M_PI/4);
-    nh_.param<double>("spiri_attitude_control/max_pitch", max_pitch_, M_PI/4);
-    nh_.param<double>("spiri_attitude_control/spiri_mass", m_, 0.9);
+    ROS_INFO("In the constructor");
+    nh_.param<double>("kp", kp_, 1.2);
+    nh_.param<double>("ki", ki_, 0.00);
+    nh_.param<double>("kd", kd_, 0.6);
+    nh_.param<double>("max_roll", max_roll_, M_PI/4);
+    nh_.param<double>("max_pitch", max_pitch_, M_PI/4);
+    nh_.param<double>("spiri_mass", m_, 0.9);
     
-    attitude_pub_ = nh_.advertise<spiri_ros_drivers::AttitudeStamped>("/command/attitude", 1);
+    attitude_pub_ = nh_.advertise<spiri_ros_drivers::AttitudeStamped>("/command/attitude", 1, false);
     
     // Have to make sure the feedback is fresh whenever we get a command
     cmd_vel_sub_ = new message_filters::Subscriber<geometry_msgs::TwistStamped>(nh_, "/command/velocity", 10);
@@ -22,9 +23,9 @@ AttitudeController::AttitudeController()
     cmd_feedback_sync_->registerCallback(boost::bind(&AttitudeController::cmdFeedbackCallback, this, _1, _2));        
     
     // TODO(Arnold): experiment with max accumulator values
-    y_pid = PID(kp_, ki_, kd_, 100, 10, true);
-    x_pid = PID(kp_, ki_, kd_, 100, 10, true);
-    z_pid = PID(kp_, ki_, kd_, 100, 10, true);
+    y_pid = PID(kp_, ki_, kd_, 10000, 100, true);
+    x_pid = PID(kp_, ki_, kd_, 10000, 100, true);
+    z_pid = PID(kp_, ki_, kd_, 10000, 100, true);
 }
 
 
@@ -48,22 +49,27 @@ void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedCo
     
     //Get the status in a format tf library can use
     tf::Vector3 current_velocity_source_frame;
+    ROS_INFO("vector3msgtotf");
     tf::vector3MsgToTF(state->twist.twist.linear, current_velocity_source_frame);
     
     // Apply the tf to the status
     tf::Vector3 current_velocity = transform(current_velocity_source_frame);
-    
+
     // Update the PID with the velocity error
     double accel_cmd_x = x_pid.update(cmd_vel->twist.linear.x - current_velocity.getX(), dt);
     double accel_cmd_y = y_pid.update(cmd_vel->twist.linear.y - current_velocity.getY(), dt);
     double accel_cmd_z = z_pid.update(cmd_vel->twist.linear.z - current_velocity.getZ(), dt);
-    
-    double thrust = m_*accel_cmd_z;
 
-    double yaw_cmd = tf::getYaw(state->pose.pose.orientation) + cmd_vel->twist.linear.z;
+    ROS_INFO("X:%f, Y:%f, Z:%f", accel_cmd_x, accel_cmd_y, accel_cmd_z);
+    
+    //double thrust = m_*accel_cmd_z;
+    int RPM = 4200;
+    double thrust = getThrustFromRPM(RPM);
+
+    double yaw_cmd = tf::getYaw(state->pose.pose.orientation) + cmd_vel->twist.angular.z;
 
     spiri_ros_drivers::AttitudeStamped attitude_cmd;
-    attitude_cmd.attitude.thrust = thrust;
+    attitude_cmd.attitude.thrust = RPM;
     attitude_cmd.attitude.pitch = getAngleFromAcceleration(thrust, accel_cmd_x);
     attitude_cmd.attitude.roll = getAngleFromAcceleration(thrust, accel_cmd_y);
     attitude_cmd.attitude.yaw = yaw_cmd;
@@ -75,13 +81,13 @@ void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedCo
 
 double AttitudeController::getThrustFromRPM(int RPM)
 {
-    double T = 0.00000065920745 * pow(RPM, 2-0.009967366) * RPM + 15.4755244;
+    double T = ( 0.0000065920745 * (RPM*RPM) ) - (0.009967366 * RPM) + 15.4755244;
     return T;
 }
 
 double AttitudeController::getAngleFromAcceleration(double thrust, double acceleration)
 {
-    double P = asin(m_*acceleration/thrust);
+    double P = -asin(m_*acceleration/thrust);
     return P;
 }
 
@@ -118,10 +124,9 @@ double AttitudeController::wrapAngle(double angle)
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "spiri_attitude_control");
-  ros::NodeHandle nh;
-  
-  AttitudeController attitude_controller();
-  
+  ROS_INFO("In main");  
+  AttitudeController attitude_controller;
+  ROS_INFO("after constructor");
   ros::spin();
   
   return 0;

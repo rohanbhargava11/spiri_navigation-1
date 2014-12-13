@@ -21,9 +21,7 @@ typedef message_filters::sync_policies::ApproximateTime<geometry_msgs::TwistStam
 class AttitudeController
 {
   public:
-    AttitudeController();
-    
-    ~AttitudeController(void) { }
+    AttitudeController(void);
   
   protected:
     PID x_pid, y_pid, z_pid;

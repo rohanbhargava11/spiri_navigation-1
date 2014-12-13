@@ -1,0 +1,13 @@
+<launch>
+  
+ <include file="$(find spiri_ros_drivers)/launch/spiri.launch" />
+
+ <param name="robot_description" command="$(find xacro)/xacro.py '$(find spiri_description)/urdf/spiri_base.urdf.xacro'" />
+
+ <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" >
+        <param name="publish_frequency" type="double" value="100.0" />
+ </node>
+
+ <node name="spiri_pose_estimation" type="spiri_pose_estimation" pkg="spiri_pose_estimation" output="screen" />
+
+</launch>

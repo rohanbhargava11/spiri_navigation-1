@@ -1,0 +1,17 @@
+<launch>
+  
+ <!--<include file="$(find spiri_ros_drivers)/launch/spiri.launch" />-->
+
+ <param name="robot_description" command="$(find xacro)/xacro.py '$(find spiri_description)/urdf/spiri_base.urdf.xacro'" />
+
+ <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" >
+        <param name="publish_frequency" type="double" value="100.0" />
+ </node>
+
+ <node name="attitude_controller" type="attitude_controller" pkg="spiri_motion_primitives" output="screen">
+    <param name="kp" value="1.2" />
+    <param name="ki" value="0.6" />
+    <param name="kd" value="0" />
+ </node>
+
+</launch>
