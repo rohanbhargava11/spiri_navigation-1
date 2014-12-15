@@ -139,24 +139,24 @@ void SpiriPoseEstimationNode::imuCallback(const sensor_msgs::ImuConstPtr& imu) {
 
 void SpiriPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& range) {
   tf::StampedTransform tf;
-  /*ROS_INFO("Trying to get range transform");
   try {
-    this->getTransformListener()->lookupTransform("range_link", "base_link",  
+    this->getTransformListener()->lookupTransform("base_link", "range_link",  
                            ros::Time(0), tf);
-    ROS_INFO("+++");
   }
   catch (tf::TransformException ex){
       ROS_ERROR("%s",ex.what());
       ros::Duration(1.0).sleep();
-      ROS_INFO("---");
-    }
-  ROS_INFO("After get range transform");*/
+      return;
+  }
+  //ROS_INFO("range_link->base_link: %f, %f, %f", tf.getOrigin().x(), tf.getOrigin().y(), tf.getOrigin().z()); 
+
+
   Height::MeasurementVector update;
   if (range->range < range->max_range - 0.01) {
-    update = range->range;// + tf.getOrigin().z();
+    update = range->range + tf.getOrigin().z();
   }
   else {
-    update = 0;//tf.getOrigin().z();
+    update = tf.getOrigin().z();
     //ROS_WARN("range is below minimum height\n");
   }
   
