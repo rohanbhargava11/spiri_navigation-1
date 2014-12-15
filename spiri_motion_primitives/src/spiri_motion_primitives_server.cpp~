@@ -9,7 +9,7 @@ SpiriMotionPrimitivesActionServer::SpiriMotionPrimitivesActionServer(std::string
     as_.start();
     range_sub_ = nh_.subscribe("range", 1, &SpiriMotionPrimitivesActionServer::range_callback, this);
     // TODO(Arnold): Parameterize this
-    state_sub_ = nh_.subscribe("/ground_truth/state", 1, &SpiriMotionPrimitivesActionServer::state_callback, this);
+    state_sub_ = nh_.subscribe("/state", 1, &SpiriMotionPrimitivesActionServer::state_callback, this);
     
     cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("cmd_vel", 1);
     
