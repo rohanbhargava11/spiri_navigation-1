@@ -19,8 +19,9 @@ AttitudeController::AttitudeController(void) : nh_("~")
     // Have to make sure the feedback is fresh whenever we get a command
     cmd_vel_sub_ = new message_filters::Subscriber<geometry_msgs::TwistStamped>(nh_, "/command/velocity", 10);
     state_sub_ = new message_filters::Subscriber<nav_msgs::Odometry>(nh_, "/state", 10);
-    cmd_feedback_sync_ = new message_filters::Synchronizer<CmdFeedbackSyncPolicy>(CmdFeedbackSyncPolicy(10),  *cmd_vel_sub_, *state_sub_);
-    cmd_feedback_sync_->registerCallback(boost::bind(&AttitudeController::cmdFeedbackCallback, this, _1, _2));        
+    motor_state_sub_ = new message_filters::Subscriber<sensor_msgs::JointState>(nh_, "/motor_state", 10);
+    cmd_feedback_sync_ = new message_filters::Synchronizer<CmdFeedbackSyncPolicy>(CmdFeedbackSyncPolicy(10),  *cmd_vel_sub_, *state_sub_, *motor_state_sub_);
+    cmd_feedback_sync_->registerCallback(boost::bind(&AttitudeController::cmdFeedbackCallback, this, _1, _2, _3));        
     
     // TODO(Arnold): experiment with max accumulator values
     y_pid = PID(kp_, ki_, kd_, 10000, 100, true);
@@ -29,7 +30,9 @@ AttitudeController::AttitudeController(void) : nh_("~")
 }
 
 
-void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedConstPtr& cmd_vel, const nav_msgs::OdometryConstPtr& state)
+void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedConstPtr& cmd_vel,
+                                             const nav_msgs::OdometryConstPtr& state,
+                                             const sensor_msgs::JointStateConstPtr& motor_state)
 {
     double dt = (ros::Time::now() - last_time_).toSec();
     last_time_ = ros::Time::now();
@@ -62,14 +65,17 @@ void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedCo
 
     ROS_INFO("X:%f, Y:%f, Z:%f", accel_cmd_x, accel_cmd_y, accel_cmd_z);
     
-    //double thrust = m_*accel_cmd_z;
-    int RPM = 4200;
-    double thrust = getThrustFromRPM(RPM);
+    double thrust = 0;
+    for (int i = 0; i < motor_state->velocity.size(); i++)
+        thrust += getThrustFromRPM(motor_state->velocity[i]);
+
+    double thrust_cmd = m_*accel_cmd_z + 9.8;
+    ROS_INFO("Actual thrust: %f. Cmd thrust: %f", thrust, thrust_cmd);
 
     double yaw_cmd = tf::getYaw(state->pose.pose.orientation) + cmd_vel->twist.angular.z;
 
     spiri_ros_drivers::AttitudeStamped attitude_cmd;
-    attitude_cmd.attitude.thrust = RPM;
+    attitude_cmd.attitude.thrust = getRPMFromThrust(thrust_cmd/4.0);
     attitude_cmd.attitude.pitch = getAngleFromAcceleration(thrust, accel_cmd_x);
     attitude_cmd.attitude.roll = getAngleFromAcceleration(thrust, accel_cmd_y);
     attitude_cmd.attitude.yaw = yaw_cmd;
@@ -81,8 +87,21 @@ void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedCo
 
 double AttitudeController::getThrustFromRPM(int RPM)
 {
-    double T = ( 0.0000065920745 * (RPM*RPM) ) - (0.009967366 * RPM) + 15.4755244;
+    double T = ( A * (RPM*RPM) ) - (B * RPM) + C;
     return T;
+}
+
+int AttitudeController::getRPMFromThrust(double thrust)
+{
+    // y = (sqrt(-4AC + 4Ax + B^2) - B) / 2A
+    double rt = -4*A*C + 4*A*thrust + B*B;
+    if (rt < 0 || A == 0)
+    {
+        ROS_WARN("Got an invalid thrust value");
+        return 0;
+    }
+    double rpm_d = (sqrt(rt) - B)/(2*A);
+    return (int) round(rpm_d);
 }
 
 double AttitudeController::getAngleFromAcceleration(double thrust, double acceleration)
