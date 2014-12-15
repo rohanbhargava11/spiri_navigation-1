@@ -67,15 +67,14 @@ void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedCo
     double thrust = 0;
     for (int i = 0; i < motor_state->velocity.size(); i++)
         thrust += getThrustFromRPM(motor_state->velocity[i]);
-    thrust /= motor_state->velocity.size();
 
-    double thrust_cmd = m_*accel_cmd_z*100; // Check units on thrust calculated from getThrustFromRPM
+    double thrust_cmd = m_*accel_cmd_z*1000;  // getRPMFromThrust uses grams, not kg
     ROS_INFO("Actual thrust: %f. Cmd thrust: %f", thrust, thrust_cmd);
 
     double yaw_cmd = tf::getYaw(state->pose.pose.orientation) + cmd_vel->twist.angular.z;
 
     spiri_ros_drivers::AttitudeStamped attitude_cmd;
-    attitude_cmd.attitude.thrust = getRPMFromThrust(thrust_cmd);
+    attitude_cmd.attitude.thrust = getRPMFromThrust(thrust_cmd/4.0); 
     attitude_cmd.attitude.pitch = getAngleFromAcceleration(thrust, accel_cmd_x);
     attitude_cmd.attitude.roll = getAngleFromAcceleration(thrust, accel_cmd_y);
     attitude_cmd.attitude.yaw = yaw_cmd;
