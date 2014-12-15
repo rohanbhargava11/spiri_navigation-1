@@ -6,10 +6,9 @@
 
 AttitudeController::AttitudeController(void) : nh_("~")
 {
-    ROS_INFO("In the constructor");
     nh_.param<double>("kp", kp_, 1.2);
-    nh_.param<double>("ki", ki_, 0.00);
-    nh_.param<double>("kd", kd_, 0.6);
+    nh_.param<double>("ki", ki_, 0.3);
+    nh_.param<double>("kd", kd_, 0.03);
     nh_.param<double>("max_roll", max_roll_, M_PI/4);
     nh_.param<double>("max_pitch", max_pitch_, M_PI/4);
     nh_.param<double>("spiri_mass", m_, 0.9);
@@ -24,9 +23,10 @@ AttitudeController::AttitudeController(void) : nh_("~")
     cmd_feedback_sync_->registerCallback(boost::bind(&AttitudeController::cmdFeedbackCallback, this, _1, _2, _3));        
     
     // TODO(Arnold): experiment with max accumulator values
-    y_pid = PID(kp_, ki_, kd_, 10000, 100, true);
-    x_pid = PID(kp_, ki_, kd_, 10000, 100, true);
-    z_pid = PID(kp_, ki_, kd_, 10000, 100, true);
+    //          kp,  ki,  kd,  max_err, max_acc, angular
+    y_pid = PID(kp_, ki_, kd_, 100000,  1000,    true);
+    x_pid = PID(kp_, ki_, kd_, 100000,  1000,    true);
+    z_pid = PID(kp_, ki_, kd_, 100000,  1000,    true);
 }
 
 
@@ -52,7 +52,6 @@ void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedCo
     
     //Get the status in a format tf library can use
     tf::Vector3 current_velocity_source_frame;
-    ROS_INFO("vector3msgtotf");
     tf::vector3MsgToTF(state->twist.twist.linear, current_velocity_source_frame);
     
     // Apply the tf to the status
@@ -62,20 +61,21 @@ void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedCo
     double accel_cmd_x = x_pid.update(cmd_vel->twist.linear.x - current_velocity.getX(), dt);
     double accel_cmd_y = y_pid.update(cmd_vel->twist.linear.y - current_velocity.getY(), dt);
     double accel_cmd_z = z_pid.update(cmd_vel->twist.linear.z - current_velocity.getZ(), dt);
-
+    
     ROS_INFO("X:%f, Y:%f, Z:%f", accel_cmd_x, accel_cmd_y, accel_cmd_z);
     
     double thrust = 0;
     for (int i = 0; i < motor_state->velocity.size(); i++)
         thrust += getThrustFromRPM(motor_state->velocity[i]);
+    thrust /= motor_state->velocity.size();
 
-    double thrust_cmd = m_*accel_cmd_z + 9.8;
+    double thrust_cmd = m_*accel_cmd_z*100; // Check units on thrust calculated from getThrustFromRPM
     ROS_INFO("Actual thrust: %f. Cmd thrust: %f", thrust, thrust_cmd);
 
     double yaw_cmd = tf::getYaw(state->pose.pose.orientation) + cmd_vel->twist.angular.z;
 
     spiri_ros_drivers::AttitudeStamped attitude_cmd;
-    attitude_cmd.attitude.thrust = getRPMFromThrust(thrust_cmd/4.0);
+    attitude_cmd.attitude.thrust = getRPMFromThrust(thrust_cmd);
     attitude_cmd.attitude.pitch = getAngleFromAcceleration(thrust, accel_cmd_x);
     attitude_cmd.attitude.roll = getAngleFromAcceleration(thrust, accel_cmd_y);
     attitude_cmd.attitude.yaw = yaw_cmd;
@@ -87,7 +87,7 @@ void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedCo
 
 double AttitudeController::getThrustFromRPM(int RPM)
 {
-    double T = ( A * (RPM*RPM) ) - (B * RPM) + C;
+    double T = ( A*(RPM*RPM) ) + (B*RPM) + C;
     return T;
 }
 
@@ -143,9 +143,7 @@ double AttitudeController::wrapAngle(double angle)
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "spiri_attitude_control");
-  ROS_INFO("In main");  
   AttitudeController attitude_controller;
-  ROS_INFO("after constructor");
   ros::spin();
   
   return 0;

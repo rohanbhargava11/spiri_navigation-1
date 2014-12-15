@@ -51,7 +51,7 @@ class AttitudeController
     double kp_, ki_, kd_;
     double max_pitch_, max_roll_;
     const static double A = 0.0000065920745;
-    const static double B = 0.009967366;
+    const static double B = -0.009967366;
     const static double C = 15.4755244;
 
     ros::Time last_time_;
