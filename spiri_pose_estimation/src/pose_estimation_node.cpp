@@ -43,22 +43,33 @@ SpiriPoseEstimationNode::SpiriPoseEstimationNode(const SystemPtr& system)
   , private_nh_("~")
   , transform_listener_(0)
 {
+  // Crate the system model.
+  // GenericQuaternionSystemModel takes imu messages as input
   if (!system) pose_estimation_->addSystem(System::create(new GenericQuaternionSystemModel));
-
+  
+  // A catchall poseupdate measurement for quick testing
   pose_estimation_->addMeasurement(new PoseUpdate("poseupdate"));
   
+  // A poseupdate measurement for visual odometry
+  pose_estimation_->addMeasurement(new PoseUpdate("vo"));
+  
+  // A height measurement for the ultrasonic range sensor.
   Height *range = new Height("range");
+  // Height measurements don't read std dev from the message, so have to set it here
   range->setStdDev(0.05);
   pose_estimation_->addMeasurement(range);
   
-  
-  /*Height *pressure = new Height("pressure");
+  // A height measurement from the pressure sensor.
+  Height *pressure = new Height("pressure");
   pressure->setStdDev(0.00001);
   pose_estimation_->addMeasurement(pressure);
   
+  // Magnetic measurement
   pose_estimation_->addMeasurement(new Magnetic("magnetic"));
   
+  // GPS measurement. TODO(Arnold): Modify the callback to detect invalid GPS data and ignore it
   pose_estimation_->addMeasurement(new GPS("gps"));
+  
   //TODO(Arnold): Enable this once there is altitude data coming back from the FC
   //pose_estimation_->addMeasurement(new Height("gps_altitude"));*/
 }
@@ -88,14 +99,14 @@ bool SpiriPoseEstimationNode::init() {
   }
 
   imu_subscriber_        = getNodeHandle().subscribe("raw_imu", 10, &SpiriPoseEstimationNode::imuCallback, this);
-  //pressure_subscriber_   = getNodeHandle().subscribe("pressure", 10, &SpiriPoseEstimationNode::pressureCallback, this);
+  pressure_subscriber_   = getNodeHandle().subscribe("pressure", 10, &SpiriPoseEstimationNode::pressureCallback, this);
   range_subscriber_      = getNodeHandle().subscribe("range", 10, &SpiriPoseEstimationNode::rangeCallback, this);
-  //magnetic_subscriber_   = getNodeHandle().subscribe("magnetic", 10, &SpiriPoseEstimationNode::magneticCallback, this);
+  magnetic_subscriber_   = getNodeHandle().subscribe("magnetic", 10, &SpiriPoseEstimationNode::magneticCallback, this);
 
-  //gps_subscriber_.subscribe(getNodeHandle(), "fix", 10);
-  //gps_velocity_subscriber_.subscribe(getNodeHandle(), "fix_velocity", 10);
-  //gps_synchronizer_ = new message_filters::TimeSynchronizer<sensor_msgs::NavSatFix,geometry_msgs::Vector3Stamped>(gps_subscriber_, gps_velocity_subscriber_, 10);
-  //gps_synchronizer_->registerCallback(&SpiriPoseEstimationNode::gpsCallback, this);
+  gps_subscriber_.subscribe(getNodeHandle(), "fix", 10);
+  gps_velocity_subscriber_.subscribe(getNodeHandle(), "fix_velocity", 10);
+  gps_synchronizer_ = new message_filters::TimeSynchronizer<sensor_msgs::NavSatFix,geometry_msgs::Vector3Stamped>(gps_subscriber_, gps_velocity_subscriber_, 10);
+  gps_synchronizer_->registerCallback(&SpiriPoseEstimationNode::gpsCallback, this);
 
   state_publisher_       = getNodeHandle().advertise<nav_msgs::Odometry>("state", 10, false);
   pose_publisher_        = getNodeHandle().advertise<geometry_msgs::PoseStamped>("pose", 10, false);
@@ -139,6 +150,7 @@ void SpiriPoseEstimationNode::imuCallback(const sensor_msgs::ImuConstPtr& imu) {
 
 void SpiriPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& range) {
   tf::StampedTransform tf;
+  // Have to transform range readings because the sensor is not at the base_link origin
   try {
     this->getTransformListener()->lookupTransform("base_link", "range_link",  
                            ros::Time(0), tf);
@@ -152,10 +164,11 @@ void SpiriPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& ra
 
 
   Height::MeasurementVector update;
-  if (range->range < range->max_range - 0.01) {
+  // TODO(Arnold): Change this condition when we settle on out of bounds values for range readings
+  if (range->range < range->max_range - 0.01) { // range is valid
     update = range->range + tf.getOrigin().z();
   }
-  else {
+  else { //range is below min range
     update = tf.getOrigin().z();
     //ROS_WARN("range is below minimum height\n");
   }
@@ -165,7 +178,7 @@ void SpiriPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& ra
 
 void SpiriPoseEstimationNode::pressureCallback(const geometry_msgs::PointStamped point) {
   Height::MeasurementVector update;
-  // TODO (Arnold): Fill in real min altitude here
+  // TODO (Arnold): Fill in real min altitude here, or possibly initialize with first altitude reading
   if (point.point.z > 0.05) {
     update = point.point.z;
     pose_estimation_->getMeasurement("pressure")->add(Height::Update(update));
@@ -222,7 +235,7 @@ void SpiriPoseEstimationNode::visualOdomCallback(const nav_msgs::Odometry vo) {
   pose.pose = vo.pose;
   twist.header = header;
   twist.twist = vo.twist;
-  pose_estimation_->getMeasurement("poseupdate")->add(PoseUpdate::Update(pose, twist));
+  pose_estimation_->getMeasurement("vo")->add(PoseUpdate::Update(pose, twist));
 }
 
 void SpiriPoseEstimationNode::syscommandCallback(const std_msgs::StringConstPtr& syscommand) {
