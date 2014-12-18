@@ -227,15 +227,8 @@ void SpiriPoseEstimationNode::twistupdateCallback(const geometry_msgs::TwistWith
   pose_estimation_->getMeasurement("poseupdate")->add(PoseUpdate::Update(twist));
 }
 
-void SpiriPoseEstimationNode::visualOdomCallback(const nav_msgs::Odometry vo) {
-  geometry_msgs::PoseWithCovarianceStamped pose;
-  geometry_msgs::TwistWithCovarianceStamped twist;
-  std_msgs::Header header = vo.header;
-  pose.header = header;
-  pose.pose = vo.pose;
-  twist.header = header;
-  twist.twist = vo.twist;
-  pose_estimation_->getMeasurement("vo")->add(PoseUpdate::Update(pose, twist));
+void SpiriPoseEstimationNode::visualOdomCallback(const geometry_msgs::TwistWithCovarianceStampedConstPtr& twist) {
+  pose_estimation_->getMeasurement("vo")->add(PoseUpdate::Update(twist));
 }
 
 void SpiriPoseEstimationNode::syscommandCallback(const std_msgs::StringConstPtr& syscommand) {

@@ -77,7 +77,7 @@ protected:
   void gpsCallback(const sensor_msgs::NavSatFixConstPtr& gps, const geometry_msgs::Vector3StampedConstPtr& gps_velocity);
   void poseupdateCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr& pose);
   void twistupdateCallback(const geometry_msgs::TwistWithCovarianceStampedConstPtr& twist);
-  void visualOdomCallback(const nav_msgs::Odometry vo);
+  void visualOdomCallback(const geometry_msgs::TwistWithCovarianceStampedConstPtr& twist);
   void syscommandCallback(const std_msgs::StringConstPtr& syscommand);
 
   virtual ros::NodeHandle& getNodeHandle() { return nh_; }
