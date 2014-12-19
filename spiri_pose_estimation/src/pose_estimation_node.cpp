@@ -109,11 +109,11 @@ bool SpiriPoseEstimationNode::init() {
   gps_synchronizer_->registerCallback(&SpiriPoseEstimationNode::gpsCallback, this);
 
   state_publisher_       = getNodeHandle().advertise<nav_msgs::Odometry>("state", 10, false);
-  pose_publisher_        = getNodeHandle().advertise<geometry_msgs::PoseStamped>("pose", 10, false);
-  velocity_publisher_    = getNodeHandle().advertise<geometry_msgs::Vector3Stamped>("velocity", 10, false);
-  imu_publisher_         = getNodeHandle().advertise<sensor_msgs::Imu>("imu", 10, false);
-  global_publisher_      = getNodeHandle().advertise<sensor_msgs::NavSatFix>("global", 10, false);
-  euler_publisher_       = getNodeHandle().advertise<geometry_msgs::Vector3Stamped>("euler", 10, false);
+  //pose_publisher_        = getNodeHandle().advertise<geometry_msgs::PoseStamped>("pose", 10, false);
+  //velocity_publisher_    = getNodeHandle().advertise<geometry_msgs::Vector3Stamped>("velocity", 10, false);
+  //imu_publisher_         = getNodeHandle().advertise<sensor_msgs::Imu>("imu", 10, false);
+  //global_publisher_      = getNodeHandle().advertise<sensor_msgs::NavSatFix>("global", 10, false);
+  //euler_publisher_       = getNodeHandle().advertise<geometry_msgs::Vector3Stamped>("euler", 10, false);
 
   angular_velocity_bias_publisher_    = getNodeHandle().advertise<geometry_msgs::Vector3Stamped>("angular_velocity_bias", 10, false);
   linear_acceleration_bias_publisher_ = getNodeHandle().advertise<geometry_msgs::Vector3Stamped>("linear_acceleration_bias", 10, false);
@@ -246,7 +246,7 @@ void SpiriPoseEstimationNode::publish() {
     state_publisher_.publish(state);
   }
 
-  if (pose_publisher_) {
+  /*if (pose_publisher_) {
     geometry_msgs::PoseStamped pose_msg;
     pose_estimation_->getPose(pose_msg);
     pose_publisher_.publish(pose_msg);
@@ -284,7 +284,7 @@ void SpiriPoseEstimationNode::publish() {
     pose_estimation_->getBias(angular_velocity_msg, linear_acceleration_msg);
     if (angular_velocity_bias_publisher_) angular_velocity_bias_publisher_.publish(angular_velocity_msg);
     if (linear_acceleration_bias_publisher_) linear_acceleration_bias_publisher_.publish(linear_acceleration_msg);
-  }
+  }*/
 
   if (getTransformBroadcaster())
   {
