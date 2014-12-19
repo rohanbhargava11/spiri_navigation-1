@@ -38,8 +38,6 @@ class AttitudeController
     int getRPMFromThrust(double thrust);
     double getAngleFromAcceleration(double thrust, double acceleration);
     void clampAttitude(spiri_ros_drivers::AttitudeStamped& attitude);
-    double wrapAngle(double angle);
-
 
     
     message_filters::Subscriber<geometry_msgs::TwistStamped> *cmd_vel_sub_;      

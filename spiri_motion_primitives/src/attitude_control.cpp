@@ -92,6 +92,7 @@ double AttitudeController::getThrustFromRPM(int RPM)
 
 int AttitudeController::getRPMFromThrust(double thrust)
 {
+    // solve for RPM from getThrustFromRPM using quadratic formula
     // y = (sqrt(-4AC + 4Ax + B^2) - B) / 2A
     double rt = -4*A*C + 4*A*thrust + B*B;
     if (rt < 0 || A == 0)
@@ -132,13 +133,6 @@ void AttitudeController::clampAttitude(spiri_ros_drivers::AttitudeStamped& attit
     // No max yaw
 }
 
-double AttitudeController::wrapAngle(double angle)
-{
-    while (angle > M_PI) angle -= M_PI;
-    while (angle < -M_PI) angle += M_PI;
-    return angle;
-}
-    
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "spiri_attitude_control");
