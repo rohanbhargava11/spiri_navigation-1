@@ -56,18 +56,18 @@ SpiriPoseEstimationNode::SpiriPoseEstimationNode(const SystemPtr& system)
   // A height measurement for the ultrasonic range sensor.
   Height *range = new Height("range");
   // Height measurements don't read std dev from the message, so have to set it here
-  range->setStdDev(0.05);
+  range->setStdDev(0.05); //TODO: Set this to the real stdDev or parameterize
   pose_estimation_->addMeasurement(range);
   
   // A height measurement from the pressure sensor.
   Height *pressure = new Height("pressure");
-  pressure->setStdDev(0.00001);
+  pressure->setStdDev(0.00001); //TODO: Set this to the real stdDev or parameterize
   pose_estimation_->addMeasurement(pressure);
   
   // Magnetic measurement
   pose_estimation_->addMeasurement(new Magnetic("magnetic"));
   
-  // GPS measurement. TODO(Arnold): Modify the callback to detect invalid GPS data and ignore it
+  // GPS measurement. TODO Modify the callback to detect invalid GPS data and ignore it
   pose_estimation_->addMeasurement(new GPS("gps"));
   
   //TODO(Arnold): Enable this once there is altitude data coming back from the FC
@@ -164,11 +164,11 @@ void SpiriPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& ra
 
 
   Height::MeasurementVector update;
-  // TODO(Arnold): Change this condition when we settle on out of bounds values for range readings
+  // TODO: Change this condition when we settle on out of bounds values for range readings
   if (range->range < range->max_range - 0.01) { // range is valid
     update = range->range + tf.getOrigin().z();
   }
-  else { //range is below min range
+  else { // range is below min range
     update = tf.getOrigin().z();
     //ROS_WARN("range is below minimum height\n");
   }
@@ -178,7 +178,7 @@ void SpiriPoseEstimationNode::rangeCallback(const sensor_msgs::RangeConstPtr& ra
 
 void SpiriPoseEstimationNode::pressureCallback(const geometry_msgs::PointStamped point) {
   Height::MeasurementVector update;
-  // TODO (Arnold): Fill in real min altitude here, or possibly initialize with first altitude reading
+  // TODO: Fill in real min altitude here, or possibly initialize with first altitude reading
   if (point.point.z > 0.05) {
     update = point.point.z;
     pose_estimation_->getMeasurement("pressure")->add(Height::Update(update));
@@ -195,6 +195,8 @@ void SpiriPoseEstimationNode::magneticCallback(const geometry_msgs::Vector3Stamp
 }
 
 void SpiriPoseEstimationNode::gpsCallback(const sensor_msgs::NavSatFixConstPtr& gps, const geometry_msgs::Vector3StampedConstPtr& gps_velocity) {
+  // TODO: This callback currently synchronizes a gps and a gps_velocity subscriber, but we don't get gps_velocity, so there is no topic to 
+  // subscribe to it
   if (gps->status.status == sensor_msgs::NavSatStatus::STATUS_NO_FIX) return;
   GPS::Update update;
   update.latitude = gps->latitude * M_PI/180.0;

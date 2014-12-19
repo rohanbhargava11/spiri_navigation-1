@@ -34,18 +34,11 @@
 #include <ros/ros.h>
 
 #include <sensor_msgs/Imu.h>
-#if defined(USE_MAV_MSGS)
-  #include <mav_msgs/Height.h>
-#elif defined(USE_HECTOR_UAV_MSGS)
-  #include <hector_uav_msgs/Altimeter.h>
-#else
-  #include <geometry_msgs/PointStamped.h>
-#endif
+#include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/NavSatFix.h>
 #include <geometry_msgs/QuaternionStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/TwistWithCovarianceStamped.h>
-#include <nav_msgs/Odometry.h>
 #include <geometry_msgs/Vector3Stamped.h>
 #include <sensor_msgs/Range.h>
 #include <nav_msgs/Odometry.h>
