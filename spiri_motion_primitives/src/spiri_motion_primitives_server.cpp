@@ -8,7 +8,6 @@ SpiriMotionPrimitivesActionServer::SpiriMotionPrimitivesActionServer(std::string
 {
     as_.start();
     range_sub_ = nh_.subscribe("range", 1, &SpiriMotionPrimitivesActionServer::range_callback, this);
-    // TODO(Arnold): Parameterize this
     state_sub_ = nh_.subscribe("/ground_truth/state", 1, &SpiriMotionPrimitivesActionServer::state_callback, this);
     
     cmd_vel_pub_ = nh_.advertise<geometry_msgs::Twist>("cmd_vel", 1);
@@ -77,8 +76,6 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
         }
     }
     
-    //if (goal->use_distance_from_ground)
-    //    goal_world_frame.pose.position.z += getDistanceToGround();
     
     ROS_INFO("Goal in world frame x:%f, y:%f, z:%f", goal_world_frame.pose.position.x, goal_world_frame.pose.position.y, goal_world_frame.pose.position.z);
         
@@ -105,7 +102,6 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
     ros::Time last_time(1e-6);
     feedback_.sum_sq_error = -1; // This will only ever be < 0 on the first iteration
     
-    // TODO (Arnold): Figure out if this is necessary
     ros::Rate r(30.0);
     
     while (ros::ok())
@@ -139,7 +135,7 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
                 
         dt = (ros::Time::now() - last_time).toSec();
         last_time = current_odom_->header.stamp;
-        if (dt < 1e-6) dt = 1e-6; // avoid divide by zero. TODO (Arnold): Remove this hack
+        if (dt < 1e-6) dt = 1e-6; // avoid divide by zero. TODO: Remove this hack
     
         
         // Update the PIDs. The position of the goal in the base_link frame is the same as the position error
@@ -155,7 +151,6 @@ void SpiriMotionPrimitivesActionServer::doMoveTo(const spiri_motion_primitives::
         cmd_vel_pub_.publish(cmd_vel);
                 
         // and put the error in the feedback
-        // don't really need to do this this way any more
         feedback_.position_error.x = x_pid.getLastError();
         feedback_.position_error.y = y_pid.getLastError();
         feedback_.position_error.z = z_pid.getLastError();
