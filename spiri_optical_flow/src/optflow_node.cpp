@@ -143,7 +143,9 @@ public:
     }
     currPoints.resize(nmatch);  orig3d.resize(nmatch);  prev3d.resize(nmatch);
     
-    cv::swap(prevImg, img);  prevPoints = currPoints;
+    double dt = msg->header.stamp.toSec() - prevT.toSec();
+    
+    cv::swap(prevImg, img);  prevPoints = currPoints;  prevT = msg->header.stamp;
     if (nmatch < _min_match) {
       if (reinit) { ROS_WARN("OptFlow: not enough LK matches to previous image, tracking lost."); } 
                    //reset _x,_y? H_prev?  publish previous dx,dy?
@@ -190,19 +192,17 @@ public:
   /*  
     geometry_msgs::PointStamped p;
     p.header.seq = _seq++;
-    p.header.stamp = msg->header.stamp; //ros::Time::now(); //
+    p.header.stamp = msg->header.stamp; //ros::Time::now();
     //nmatch as surrogate for (inverse) variance ?
     p.point.x = _x; p.point.y = _y; p.point.z = _altitude;
     _pub->publish(p);
   */
     geometry_msgs::TwistWithCovarianceStamped twist;
-    double dt = msg->header.stamp.toSec() - prevT.toSec();
     twist.header.seq = _seq++;
     twist.header.stamp = msg->header.stamp;
     twist.twist.twist.linear.x = dx / dt;
     twist.twist.twist.linear.y = dy / dt;
     //twist.twist.twist.angular.z =
-    //twist.twist.covariance[36]
     twist.twist.covariance[0*6+0] = 0.025; //TODO: tune covariance
     twist.twist.covariance[1*6+1] = 0.025;
     for (int i=2; i<6; i++) twist.twist.covariance[i*6+i] = 1000.;
