@@ -115,7 +115,7 @@ add_executable(attitude_controller src/attitude_control.cpp src/pid.cpp)
 add_dependencies(spiri_motion_primitives_server spiri_motion_primitives_generate_messages_cpp)
 add_dependencies(go_to_example_client spiri_motion_primitives_generate_messages_cpp)
 add_dependencies(example_motions spiri_motion_primitives_generate_messages_cpp)
-
+add_dependencies(attitude_controller spiri_ros_drivers_generate_messages_cpp)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(spiri_motion_primitives_server
   ${catkin_LIBRARIES}
