@@ -8,8 +8,10 @@
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/TwistWithCovarianceStamped.h>
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/Range.h>
 
 using namespace cv;
 using namespace std;
@@ -20,6 +22,7 @@ class OptFlow
 {
   cv::Mat prevImg, prevH;
   vector<Point2f> prevPoints, prev3d, orig3d;
+  ros::Time prevT;
   
   const int _min_kp, _max_kp, _min_match;
   int _seq;
@@ -59,10 +62,10 @@ public:
     if (_display) destroyWindow(win);
   }
 
-/*void altitude_cb(?) {
-    _altitude = ?;
+  void altitude_cb(const sensor_msgs::RangeConstPtr &msg) {
+    _altitude = msg->range;
   }
-*/
+
 /*Core OpenCV functions used:
   goodFeaturesToTrack(InputArray image, OutputArray corners, int maxCorners, double qualityLevel, double minDistance, 
                       InputArray mask=noArray(), int blockSize=3, bool useHarrisDetector=false, double k=0.04 )
@@ -78,11 +81,11 @@ public:
  *    estimate while repeating this step.
  * 2. Match patches in the current image to patches at the corner features in the previous image (calcOpticalFlowPyrLK)
  * 3. Prune the patch locations to those that were matched with LK.
- *    If # matches < _min_match, goto 1 to get new features if we haven't already so, otherwise emit a warning
+ *    If # matches < _min_match, goto 1 to get new features if we haven't already done so, otherwise emit a warning.
  * 4. Use CameraInfo and, if available, altitude, to project the locations to coordinates on the ground plane.
  * 4. Compute homography, H, of the current matched points to the original locations of those points found in 1,
  *    filtering outliers with RANSAC (findHomography).
- *    If # inliers < _min_match, goto 1 to get new features if we haven't already so, otherwise emit a warning
+ *    If # inliers < _min_match, goto 1 to get new features if we haven't already so, otherwise emit a warning.
  * 5. dx = H(0,2) - H_prev(0,2),  dy=H(1,2) - H_prev(1,2).
  *    If dx or dy indicate a speed >3m/s, emit a warning.  Otherwise, x+=dx.  y+=dy.  H_prev = H.
  */
@@ -93,6 +96,7 @@ public:
 
     const bool reinit = prevPoints.size() < _min_kp;
     if (reinit) {
+      prevT = msg->header.stamp;
       if (prevImg.empty()) { cv::swap(prevImg,img); ROS_INFO("OptFlow image rows=%i, cols=%i", img.rows, img.cols); return; }
       prevH = Mat::eye(3, 3, CV_32FC1);
       goodFeaturesToTrack(prevImg, prevPoints, _max_kp, 0.02, prevImg.cols >> 6); //min 10pix separation for 640x480
@@ -106,7 +110,7 @@ public:
         return;
       }
       cornerSubPix(prevImg, prevPoints, _subPixWinSz, Size(-1,-1), _termcrit); //over-kill?
-      prev3d.clear(); prev3d.resize(prevPoints.size());
+      prev3d.clear();  prev3d.resize(prevPoints.size());
       for( size_t i = 0; i < prevPoints.size(); i++ ) {
         if ( _cam_info_is_useful ) {
           Point3d prev = _cam_model.projectPixelTo3dRay( _cam_model.rectifyPoint(prevPoints[i]) );
@@ -139,7 +143,9 @@ public:
     }
     currPoints.resize(nmatch);  orig3d.resize(nmatch);  prev3d.resize(nmatch);
     
-    cv::swap(prevImg, img);  prevPoints = currPoints;
+    double dt = msg->header.stamp.toSec() - prevT.toSec();
+    
+    cv::swap(prevImg, img);  prevPoints = currPoints;  prevT = msg->header.stamp;
     if (nmatch < _min_match) {
       if (reinit) { ROS_WARN("OptFlow: not enough LK matches to previous image, tracking lost."); } 
                    //reset _x,_y? H_prev?  publish previous dx,dy?
@@ -183,12 +189,24 @@ public:
     }
 
     _x += dx;  _y += dy;  prevH = H;
-    
+  /*  
     geometry_msgs::PointStamped p;
-    p.header.seq = _seq++;  p.header.stamp = ros::Time::now();
+    p.header.seq = _seq++;
+    p.header.stamp = msg->header.stamp; //ros::Time::now();
     //nmatch as surrogate for (inverse) variance ?
     p.point.x = _x; p.point.y = _y; p.point.z = _altitude;
     _pub->publish(p);
+  */
+    geometry_msgs::TwistWithCovarianceStamped twist;
+    twist.header.seq = _seq++;
+    twist.header.stamp = msg->header.stamp;
+    twist.twist.twist.linear.x = dx / dt;
+    twist.twist.twist.linear.y = dy / dt;
+    //twist.twist.twist.angular.z =
+    twist.twist.covariance[0*6+0] = 0.025; //TODO: tune covariance
+    twist.twist.covariance[1*6+1] = 0.025;
+    for (int i=2; i<6; i++) twist.twist.covariance[i*6+i] = 1000.;
+    _pub->publish(twist);
     
     if (_display) {
       if (_seq%100 == 0) {
@@ -214,7 +232,7 @@ int main(int argc, char *argv[])
   bool display;
   double threshold;
   
-  nh.param("cam_topic", cam_topic, std::string("/downward_cam/image_rect"));
+  nh.param("cam_topic", cam_topic, std::string("/downward_cam/image_raw"));
   nh.param("caminfo_topic", caminfo_topic, std::string("/downward_cam/camera_info"));
   nh.param("altitude_topic", altitude_topic, std::string("/altitude"));
   nh.param("pub_topic", pub_topic, std::string("/optflow"));
@@ -222,9 +240,11 @@ int main(int argc, char *argv[])
   nh.param("threshold", threshold, 0.001);
 
   sensor_msgs::CameraInfoConstPtr cam_info = ros::topic::waitForMessage<sensor_msgs::CameraInfo>(caminfo_topic, nh);  
-  ros::Publisher pub = nh.advertise<geometry_msgs::PointStamped>(pub_topic, 100);
+//ros::Publisher pub = nh.advertise<geometry_msgs::PointStamped>(pub_topic, 100);
+  ros::Publisher pub = nh.advertise<geometry_msgs::TwistWithCovarianceStamped>(pub_topic, 100);
   OptFlow optflow(&pub, cam_info/*caminfo_topic*/, display, threshold);                
-  image_transport::Subscriber itsub = it.subscribe(cam_topic, 1, &OptFlow::img_cb, &optflow);
+  ros::Subscriber altitude_sub = nh.subscribe(altitude_topic, 1, &OptFlow::altitude_cb, &optflow);
+  image_transport::Subscriber it_sub = it.subscribe(cam_topic, 1, &OptFlow::img_cb, &optflow);
   ros::spin();
   return 0;
 }
