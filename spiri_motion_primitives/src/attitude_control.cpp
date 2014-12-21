@@ -18,7 +18,7 @@ AttitudeController::AttitudeController(void) : nh_("~")
     // Have to make sure the feedback is fresh whenever we get a command
     cmd_vel_sub_ = new message_filters::Subscriber<geometry_msgs::TwistStamped>(nh_, "/command/velocity", 10);
     state_sub_ = new message_filters::Subscriber<nav_msgs::Odometry>(nh_, "/state", 10);
-    motor_state_sub_ = new message_filters::Subscriber<sensor_msgs::JointState>(nh_, "/motor_state", 10);
+    motor_state_sub_ = new message_filters::Subscriber<sensor_msgs::JointState>(nh_, "/motor_states", 10);
     cmd_feedback_sync_ = new message_filters::Synchronizer<CmdFeedbackSyncPolicy>(CmdFeedbackSyncPolicy(10),  *cmd_vel_sub_, *state_sub_, *motor_state_sub_);
     cmd_feedback_sync_->registerCallback(boost::bind(&AttitudeController::cmdFeedbackCallback, this, _1, _2, _3));        
     
@@ -37,7 +37,7 @@ void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedCo
     double dt = (ros::Time::now() - last_time_).toSec();
     last_time_ = ros::Time::now();
     
-    
+    ROS_INFO("In the callback");    
     // Get the velocity in the base_link frame
     tf::StampedTransform transform;
     try{
@@ -81,6 +81,7 @@ void AttitudeController::cmdFeedbackCallback(const geometry_msgs::TwistStampedCo
     
     attitude_cmd.header.stamp = ros::Time::now();
     clampAttitude(attitude_cmd);
+    ROS_INFO("Publish attitude command");
     attitude_pub_.publish(attitude_cmd);
 }
 
