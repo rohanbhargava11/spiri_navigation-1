@@ -20,7 +20,7 @@ AttitudeController::AttitudeController(void) : nh_("~")
     state_sub_ = new message_filters::Subscriber<nav_msgs::Odometry>(nh_, "/state", 10);
     motor_state_sub_ = new message_filters::Subscriber<sensor_msgs::JointState>(nh_, "/motor_state", 10);
     cmd_feedback_sync_ = new message_filters::Synchronizer<CmdFeedbackSyncPolicy>(CmdFeedbackSyncPolicy(10),  *cmd_vel_sub_, *state_sub_, *motor_state_sub_);
-    cmd_feedback_sync_->registerCallback(boost::bind(&AttitudeController::cmdFeedbackCallback, this, _1, _2, _3));        
+    cmd_feedback_sync_->registerCallback(boost::bind(&AttitudeController::cmdFeedbackCallback, this, _1, _2, _3));
     
     // TODO(Arnold): experiment with max accumulator values
     //          kp,  ki,  kd,  max_err, max_acc, angular
