@@ -6,6 +6,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_geometry
   image_transport
   geometry_msgs
+  tf
 )
 
 find_package(OpenCV REQUIRED)
@@ -33,13 +34,19 @@ target_link_libraries(optflow_node
   ${OpenCV_LIBRARIES}
 )
 
+add_executable(dense_optflow_node src/dense_optflow.cpp)
+
+target_link_libraries(dense_optflow_node
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+)
 # install(PROGRAMS
 #   scripts/my_python_script
 #   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
 
 ## Mark executables and/or libraries for installation
-install(TARGETS optflow_node
+install(TARGETS dense_optflow_node optflow_node
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
